@@ -73,7 +73,6 @@ Full support for
 > [!NOTE]
 > 🧠 **AI Prompting Tip:** For best results, use our [comprehensive prompt](/prompting) covering all supported markdown features.
 
-
 ### 💻 Interactive Code Blocks
 
 - Syntax highlighting powered by Shiki
@@ -98,7 +97,6 @@ $$
 - **Incremental rendering** during streaming content
 - Pan and Zoom
 - Full screen mode
-
 
 # **Example:**
 
@@ -140,11 +138,11 @@ pie title Project Time Allocation
 
 | H1                        | H2  | H3  |
 | ------------------------- | --- | --- |
-| This cell spans 3 columns |||
+| This cell spans 3 columns |     |     |
 
 | Header 1                  | Header 2 | Header 3 |
 | ------------------------- | -------- | -------- |
-| This cell spans 2 columns || Normal   |
+| This cell spans 2 columns |          | Normal   |
 | Normal                    | Normal   | Normal   |
 
 #### Rowspan
@@ -160,7 +158,7 @@ pie title Project Time Allocation
 | --------------- | -------- |
 | Cell B          | Cell A   |
 | --------------- | -------- |
-| Footer          ||
+| Footer          |          |
 
 #### Column alignment
 
@@ -255,23 +253,23 @@ To enable inline citations, pass a `sources` object as a prop to the `Streamdown
 
 ```svelte
 <script>
-  import { Streamdown } from 'svelte-streamdown';
+	import { Streamdown } from 'svelte-streamdown';
 
-  let content = `According to [smith2023], AI is advancing rapidly. See also [nested.subsection] for related work.`;
+	let content = `According to [smith2023], AI is advancing rapidly. See also [nested.subsection] for related work.`;
 
-  let sources = {
-    "smith2023": {
-      title: "AI Research Paper",
-      url: "https://example.com/paper",
-      content: "Detailed content of the citation..."
-    },
-    "nested": {
-      "subsection": {
-        title: "Nested Citation",
-        url: "https://example.com/nested"
-      }
-    }
-  };
+	let sources = {
+		smith2023: {
+			title: 'AI Research Paper',
+			url: 'https://example.com/paper',
+			content: 'Detailed content of the citation...'
+		},
+		nested: {
+			subsection: {
+				title: 'Nested Citation',
+				url: 'https://example.com/nested'
+			}
+		}
+	};
 </script>
 
 <Streamdown {content} {sources} />
@@ -284,7 +282,6 @@ Citations work with objects containing these properties:
 - `title (or name or author)`: Display title for the citation
 - `url (or href, url, link or source)`: Link to the source
 - `content (or text, summary or excerpt)`: Rich content to display in carousel mode
-
 
 #### Display Modes
 
@@ -306,6 +303,7 @@ You can control the display mode using the `inlineCitationsMode` prop:
 #### Citation Popovers
 
 Citations appear as clickable buttons that open popovers when clicked. The popover shows:
+
 - Source title and URL (when available)
 - Favicon from the source domain
 - Rich content (in carousel mode)
@@ -317,22 +315,23 @@ If your citation data structure doesn't match the default format, you can custom
 
 ```svelte
 <Streamdown {content} {sources}>
-  {#snippet inlineCitationPreview({ token })}
-    <!-- Customize the clickable citation button -->   
-      {token.keys[0]}
-  {/snippet}
+	{#snippet inlineCitationPreview({ token })}
+		<!-- Customize the clickable citation button -->
+		{token.keys[0]}
+	{/snippet}
 
-  {#snippet inlineCitationContent({ source, key, token })}
-    <!-- Customize content displayed in popover -->
-    <div class="custom-content">
-      <h4>{source.customTitle || key}</h4>
-      <p>{source.customDescription}</p>
-    </div>
-  {/snippet}
+	{#snippet inlineCitationContent({ source, key, token })}
+		<!-- Customize content displayed in popover -->
+		<div class="custom-content">
+			<h4>{source.customTitle || key}</h4>
+			<p>{source.customDescription}</p>
+		</div>
+	{/snippet}
 </Streamdown>
 ```
 
 These snippets allow you to:
+
 - **`inlineCitationPreview`**: Customize the content of the clickable button that appears in the text
 - **`inlineCitationContent`**: Customize how individual citation content is displayed within popovers
 - **`inlineCitationPopover`**: Completely customize the list of citations
@@ -473,24 +472,21 @@ Streamdown is optimized for minimal bundle size by making heavy components **opt
 <script>
 	import { Streamdown } from 'svelte-streamdown';
 	// Import only the components you need
-	import Code from 'svelte-streamdown/code';       // Shiki syntax highlighting
+	import Code from 'svelte-streamdown/code'; // Shiki syntax highlighting
 	import Mermaid from 'svelte-streamdown/mermaid'; // Mermaid diagrams
-	import Math from 'svelte-streamdown/math';       // KaTeX math rendering
+	import Math from 'svelte-streamdown/math'; // KaTeX math rendering
 </script>
 
-<Streamdown
-	{content}
-	components={{ code: Code, mermaid: Mermaid, math: Math }}
-/>
+<Streamdown {content} components={{ code: Code, mermaid: Mermaid, math: Math }} />
 ```
 
 ### Component Dependencies
 
-| Component | Import Path | Dependency | Size Impact |
-|-----------|-------------|------------|-------------|
-| `Code` | `svelte-streamdown/code` | Shiki | ~2MB (languages + themes) |
-| `Mermaid` | `svelte-streamdown/mermaid` | Mermaid.js | ~1.5MB |
-| `Math` | `svelte-streamdown/math` | KaTeX | ~300KB |
+| Component | Import Path                 | Dependency | Size Impact               |
+| --------- | --------------------------- | ---------- | ------------------------- |
+| `Code`    | `svelte-streamdown/code`    | Shiki      | ~2MB (languages + themes) |
+| `Mermaid` | `svelte-streamdown/mermaid` | Mermaid.js | ~1.5MB                    |
+| `Math`    | `svelte-streamdown/math`    | KaTeX      | ~300KB                    |
 
 > [!TIP]
 > Only import the components your application actually uses. If your content doesn't include code blocks, mermaid diagrams, or math expressions, you can skip those imports entirely for a much smaller bundle.
@@ -498,6 +494,7 @@ Streamdown is optimized for minimal bundle size by making heavy components **opt
 ### Fallback Behavior
 
 When a heavy component is not provided:
+
 - **Code blocks**: Render as plain `<pre><code>` without syntax highlighting
 - **Mermaid**: Renders the mermaid source as a code block
 - **Math**: Renders the raw LaTeX/math text
@@ -667,9 +664,9 @@ Streamdown supports MDX-style JSX components, allowing you to embed custom Svelt
 
 ```svelte
 <script>
-  import { Streamdown } from 'svelte-streamdown';
-  
-  let content = `
+	import { Streamdown } from 'svelte-streamdown';
+
+	let content = `
 # Using MDX Components
 
 <Card title="Hello" count={42}>
@@ -681,23 +678,23 @@ This is **markdown content** inside a component!
 </script>
 
 <Streamdown {content}>
-  {#snippet mdx({ token, props, children })}
-    {#if token.tagName === 'Card'}
-      <div class="rounded-lg border border-gray-200 p-4 shadow-sm">
-        <h3 class="text-xl font-bold">{props.title}</h3>
-        <p class="text-gray-600">Count: {props.count}</p>
-        <div class="mt-2">
-          {@render children()}
-        </div>
-      </div>
-    {:else if token.tagName === 'Button'}
-      <button class="rounded px-4 py-2 {props.active ? 'bg-blue-500 text-white' : 'bg-gray-200'}">
-        {props.label}
-      </button>
-    {:else}
-      {@render children()}
-    {/if}
-  {/snippet}
+	{#snippet mdx({ token, props, children })}
+		{#if token.tagName === 'Card'}
+			<div class="rounded-lg border border-gray-200 p-4 shadow-sm">
+				<h3 class="text-xl font-bold">{props.title}</h3>
+				<p class="text-gray-600">Count: {props.count}</p>
+				<div class="mt-2">
+					{@render children()}
+				</div>
+			</div>
+		{:else if token.tagName === 'Button'}
+			<button class="rounded px-4 py-2 {props.active ? 'bg-blue-500 text-white' : 'bg-gray-200'}">
+				{props.label}
+			</button>
+		{:else}
+			{@render children()}
+		{/if}
+	{/snippet}
 </Streamdown>
 ```
 
@@ -707,11 +704,11 @@ Instead of using the `mdx` snippet with conditional logic, you can pass Svelte c
 
 ```svelte
 <script>
-  import { Streamdown } from 'svelte-streamdown';
-  import Card from './Card.svelte';
-  import Button from './Button.svelte';
-  
-  let content = `
+	import { Streamdown } from 'svelte-streamdown';
+	import Card from './Card.svelte';
+	import Button from './Button.svelte';
+
+	let content = `
 # Using MDX Components
 
 <Card title="Hello" count={42}>
@@ -730,26 +727,26 @@ This is **markdown content** inside a component!
 ```svelte
 <!-- Card.svelte -->
 <script>
-  let { title, count, children } = $props();
+	let { title, count, children } = $props();
 </script>
 
 <div class="rounded-lg border border-gray-200 p-4 shadow-sm">
-  <h3 class="text-xl font-bold">{title}</h3>
-  <p class="text-gray-600">Count: {count}</p>
-  <div class="mt-2">
-    {@render children()}
-  </div>
+	<h3 class="text-xl font-bold">{title}</h3>
+	<p class="text-gray-600">Count: {count}</p>
+	<div class="mt-2">
+		{@render children()}
+	</div>
 </div>
 ```
 
 ```svelte
 <!-- Button.svelte -->
 <script>
-  let { label, active } = $props();
+	let { label, active } = $props();
 </script>
 
 <button class="rounded px-4 py-2 {active ? 'bg-blue-500 text-white' : 'bg-gray-200'}">
-  {label}
+	{label}
 </button>
 ```
 
@@ -758,11 +755,13 @@ This approach is cleaner when you have standalone component files, while the `md
 ### Supported Syntax
 
 **Self-closing components:**
+
 ```markdown
 <Component attr="value" count={42} enabled={true} />
 ```
 
 **Components with markdown children:**
+
 ```markdown
 <Component title="Hello">
 # This is a heading
@@ -798,31 +797,33 @@ This ensures your UI remains stable even when receiving partial markdown from st
 ### Component Props
 
 The `mdx` snippet receives three parameters:
+
 - `token`: The full MdxToken with `tagName`, `attributes`, `selfClosing`, etc.
 - `props`: Object containing all parsed attributes (e.g., `props.title`, `props.count`)
 - `children`: Snippet containing parsed markdown content
 
 Use `token.tagName` to determine which component is being rendered:
 <Card title="Hello" count={5}>Content</Card>
+
 ```svelte
 <!-- Markdown: <Card title="Hello" count={5}>Content</Card> -->
 <Streamdown {content}>
-  {#snippet mdx({ token, props, children })}
-    {#if token.tagName === 'Card'}
-      <div>
-        <h3>{props.title}</h3>
-        <span>Count: {props.count}</span>
-        {@render children()}
-      </div>
-    {:else if token.tagName === 'Alert'}
-      <div class="alert alert-{props.type}">
-        {@render children()}
-      </div>
-    {:else}
-      <!-- Fallback for unknown components -->
-      {@render children()}
-    {/if}
-  {/snippet}
+	{#snippet mdx({ token, props, children })}
+		{#if token.tagName === 'Card'}
+			<div>
+				<h3>{props.title}</h3>
+				<span>Count: {props.count}</span>
+				{@render children()}
+			</div>
+		{:else if token.tagName === 'Alert'}
+			<div class="alert alert-{props.type}">
+				{@render children()}
+			</div>
+		{:else}
+			<!-- Fallback for unknown components -->
+			{@render children()}
+		{/if}
+	{/snippet}
 </Streamdown>
 ```
 
