@@ -128,43 +128,85 @@ const parseExtensions = (...extensions: Extension[]) => {
 	return options;
 };
 
+// Pre-compute footnote extensions (safeGetContext runs lazily inside tokenizers)
+const _defaultFootnoteExtensions = markedFootnote();
+
+// Pre-compute default Lexer options for lex() and parseBlocks()
+const _defaultLexOptions = parseExtensions(
+	markedHr,
+	markedTable,
+	..._defaultFootnoteExtensions,
+	markedAlert,
+	...markedMath,
+	markedSub,
+	markedSup,
+	markedList,
+	markedBr,
+	markedDl,
+	markedAlign,
+	markedCitations,
+	markedMdx
+);
+
+const _defaultBlockOptions = parseExtensions(
+	markedHr,
+	..._defaultFootnoteExtensions,
+	markedDl,
+	markedTable,
+	markedAlign,
+	markedMdx
+);
+
 export const lex = (markdown: string, extensions: Extension[] = []): StreamdownToken[] => {
-	return new Lexer(
-		parseExtensions(
-			markedHr,
-			markedTable,
-			...markedFootnote(),
-			markedAlert,
-			...markedMath,
-			markedSub,
-			markedSup,
-			markedList,
-			markedBr,
-			markedDl,
-			markedAlign,
-			markedCitations,
-			markedMdx,
-			...extensions
-		)
-	)
+	const options =
+		extensions.length === 0
+			? _defaultLexOptions
+			: parseExtensions(
+					markedHr,
+					markedTable,
+					..._defaultFootnoteExtensions,
+					markedAlert,
+					...markedMath,
+					markedSub,
+					markedSup,
+					markedList,
+					markedBr,
+					markedDl,
+					markedAlign,
+					markedCitations,
+					markedMdx,
+					...extensions
+				);
+	return new Lexer(options)
 		.lex(markdown)
 		.filter((token) => token.type !== 'space' && token.type !== 'footnote') as StreamdownToken[];
 };
 
-export const parseBlocks = (markdown: string, extensions: Extension[] = []): string[] => {
-	const blockLexer = new Lexer(
-		parseExtensions(
-			markedHr,
-			...markedFootnote(),
-			markedDl,
-			markedTable,
-			markedAlign,
-			markedMdx,
-			...extensions.filter(
-				({ level, applyInBlockParsing }) => level === 'block' && applyInBlockParsing
-			)
-		)
+// Incremental parseBlocks cache
+let _pbCache: {
+	content: string;
+	blocks: string[];
+	stableLength: number; // byte offset where stable prefix ends
+	extensionsRef: Extension[] | undefined;
+} | null = null;
+
+const _doParseBlocks = (markdown: string, extensions: Extension[]): string[] => {
+	const blockExtensions = extensions.filter(
+		({ level, applyInBlockParsing }) => level === 'block' && applyInBlockParsing
 	);
+	const options =
+		blockExtensions.length === 0
+			? _defaultBlockOptions
+			: parseExtensions(
+					markedHr,
+					..._defaultFootnoteExtensions,
+					markedDl,
+					markedTable,
+					markedAlign,
+					markedMdx,
+					...blockExtensions
+				);
+	const blockLexer = new Lexer(options);
 
 	return blockLexer.blockTokens(markdown, []).reduce((acc, block) => {
 		if (block.type === 'space' || block.type === 'footnote') {
@@ -174,6 +216,42 @@ export const parseBlocks = (markdown: string, extensions: Extension[] = []): str
 		}
 		return acc;
 	}, [] as string[]);
+};
+
+export const parseBlocks = (markdown: string, extensions: Extension[] = []): string[] => {
+	// Incremental path: if content was appended (streaming), only re-parse the tail
+	if (
+		_pbCache &&
+		_pbCache.extensionsRef === extensions &&
+		_pbCache.blocks.length > 0 &&
+		markdown.length > _pbCache.content.length &&
+		markdown.startsWith(_pbCache.content)
+	) {
+		// Re-parse from the start of the last cached block onward
+		const tail = markdown.slice(_pbCache.stableLength);
+		const stableBlocks = _pbCache.stableLength > 0 ? _pbCache.blocks.slice(0, -1) : [];
+		const newBlocks = _doParseBlocks(tail, extensions);
+		const result = stableBlocks.concat(newBlocks);
+
+		// Update cache
+		let stableLength = 0;
+		for (let i = 0; i < result.length - 1; i++) {
+			stableLength += result[i].length;
+		}
+		_pbCache = { content: markdown, blocks: result, stableLength, extensionsRef: extensions };
+		return result;
+	}
+
+	// Full parse (first call, content replaced, extensions changed, etc.)
+	const result = _doParseBlocks(markdown, extensions);
+
+	// Cache result
+	let stableLength = 0;
+	for (let i = 0; i < result.length - 1; i++) {
+		stableLength += result[i].length;
+	}
+	_pbCache = { content: markdown, blocks: result, stableLength, extensionsRef: extensions };
+	return result;
 };
 
 export type {

@@ -1,4 +1,4 @@
-import type { ThemedToken, ThemeRegistration } from 'shiki';
+import type { ThemedToken, ThemeRegistration, GrammarState } from 'shiki';
 import type { HighlighterCore } from 'shiki/core';
 import { SvelteMap } from 'svelte/reactivity';
 import {
@@ -21,12 +21,32 @@ const DEFAULT_THEMES = {
 	'github-light': githubLight
 };
 
+function plaintextTokens(code: string): ThemedToken[][] {
+	return code
+		.split('\n')
+		.map((line) => [{ content: line, color: undefined, bgColor: undefined } as ThemedToken]);
+}
+
+interface HlCacheEntry {
+	language: string;
+	// Code up to and including the last \n (all completed lines)
+	completedCode: string;
+	// Tokens for completedCode (includes trailing empty line from \n)
+	completedTokens: ThemedToken[][];
+	// Grammar state at end of completedCode
+	grammarState: GrammarState | undefined;
+	// Full code from the last call (for exact-match shortcut)
+	lastCode: string;
+	lastResult: ThemedToken[][];
+}
+
 class HighlighterManager {
 	loadedLanguages = new SvelteMap<string, Promise<void> | boolean>();
 	highlighter = $state<Highlighter | Promise<Highlighter> | null>(null);
 	customLanguages: Set<string>;
 	languageLoaders: Map<string, () => Promise<any>>;
 	additionalThemes: Record<string, ThemeRegistration>;
+	private _hlCache = new Map<string, HlCacheEntry>();
 
 	constructor(
 		languages: LanguageInfo[],
@@ -177,46 +197,126 @@ class HighlighterManager {
 	/**
 	 * Highlights code synchronously. Must call isReady() first.
 	 * Returns plaintext tokens for unsupported languages.
+	 * When blockId is provided, enables incremental highlighting for streaming.
+	 *
+	 * Incremental strategy: cache tokens for COMPLETED lines (ending with \n)
+	 * and only re-tokenize the current incomplete line on each update.
+	 * This avoids the O(N) full re-highlight on every character during streaming.
 	 */
-	highlightCode(code: string, language: string | undefined, theme: string): ThemedToken[][] {
+	highlightCode(
+		code: string,
+		language: string | undefined,
+		theme: string,
+		blockId?: string
+	): ThemedToken[][] {
 		try {
 			const highlighter = this.highlighter;
 			if (!highlighter || highlighter instanceof Promise) {
-				// Return plaintext tokens when highlighter is not ready
-				return code.split('\n').map((line) => [
-					{
-						content: line,
-						color: undefined,
-						bgColor: undefined
-					} as ThemedToken
-				]);
+				return plaintextTokens(code);
 			}
 
-			// For unsupported languages, return plaintext tokens
 			if (!language || !this.isLanguageSupported(language)) {
-				return code.split('\n').map((line) => [
-					{
-						content: line,
-						color: undefined,
-						bgColor: undefined
-					} as ThemedToken
-				]);
+				return plaintextTokens(code);
 			}
 
-			const tokens = highlighter.codeToTokensBase(code, {
-				lang: language,
-				theme
-			});
-			return tokens;
+			const cacheKey = blockId ? `${blockId}\0${theme}` : null;
+			const cached = cacheKey ? this._hlCache.get(cacheKey) : null;
+
+			// Exact match — return cached result (code block unchanged)
+			if (cached && cached.lastCode === code) {
+				return cached.lastResult;
+			}
+
+			// Split code into completed lines and trailing incomplete line
+			const lastNewline = code.lastIndexOf('\n');
+			const completedCode = lastNewline >= 0 ? code.substring(0, lastNewline + 1) : '';
+			const tailCode = lastNewline >= 0 ? code.substring(lastNewline + 1) : code;
+
+			let completedTokens: ThemedToken[][];
+			let grammarState: GrammarState | undefined;
+
+			if (
+				cached &&
+				cached.language === language &&
+				cached.grammarState !== undefined &&
+				completedCode.startsWith(cached.completedCode)
+			) {
+				if (completedCode === cached.completedCode) {
+					// Same completed lines — reuse tokens + grammar state
+					completedTokens = cached.completedTokens;
+					grammarState = cached.grammarState;
+				} else {
+					// New completed lines were added — incrementally tokenize them
+					const newPart = completedCode.substring(cached.completedCode.length);
+					const newTokens = highlighter.codeToTokensBase(newPart, {
+						lang: language,
+						theme,
+						grammarState: cached.grammarState
+					});
+					const newState = (highlighter as any).getLastGrammarState(newTokens) as
+						| GrammarState
+						| undefined;
+
+					// cached.completedTokens has a trailing empty line from the \n;
+					// drop it and append the newly tokenized lines
+					completedTokens =
+						cached.completedTokens.length > 0
+							? [...cached.completedTokens.slice(0, -1), ...newTokens]
+							: newTokens;
+					grammarState = newState ?? cached.grammarState;
+				}
+			} else {
+				// No usable cache — full tokenize the completed portion
+				if (completedCode.length > 0) {
+					completedTokens = highlighter.codeToTokensBase(completedCode, {
+						lang: language,
+						theme
+					});
+					grammarState = (highlighter as any).getLastGrammarState(completedTokens) as
+						| GrammarState
+						| undefined;
+				} else {
+					completedTokens = [];
+					grammarState = undefined;
+				}
+			}
+
+			// Tokenize the trailing incomplete line (this is always re-done)
+			let result: ThemedToken[][];
+			if (tailCode.length > 0) {
+				const tailTokens = grammarState
+					? highlighter.codeToTokensBase(tailCode, {
+							lang: language,
+							theme,
+							grammarState
+						})
+					: highlighter.codeToTokensBase(tailCode, { lang: language, theme });
+
+				// Drop the trailing empty line from completed, append tail
+				result =
+					completedTokens.length > 0
+						? [...completedTokens.slice(0, -1), ...tailTokens]
+						: tailTokens;
+			} else {
+				// Code ends with \n — completed tokens ARE the result
+				result = completedTokens;
+			}
+
+			// Update cache
+			if (cacheKey) {
+				this._hlCache.set(cacheKey, {
+					language,
+					completedCode,
+					completedTokens,
+					grammarState,
+					lastCode: code,
+					lastResult: result
+				});
+			}
+
+			return result;
 		} catch (error) {
-			// Return plaintext tokens on error
-			return code.split('\n').map((line) => [
-				{
-					content: line,
-					color: undefined,
-					bgColor: undefined
-				} as ThemedToken
-			]);
+			return plaintextTokens(code);
 		}
 	}
 

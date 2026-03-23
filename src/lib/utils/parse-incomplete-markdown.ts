@@ -29,10 +29,12 @@ interface ParseState {
 	fenceInfo?: string;
 	mdxUnclosedTags?: Array<{ tagName: string; lineIndex: number }>;
 	mdxLineStates?: Array<{ inMdx: boolean; incompletePositions: number[] }>;
+	_lines?: string[]; // cached split result, avoids redundant split('\n')
 }
 
 export class IncompleteMarkdownParser {
 	private plugins: Plugin[] = [];
+	private _skipSets: Set<string>[] = [];
 	private state: ParseState = {
 		currentLine: 0,
 		context: 'normal',
@@ -40,12 +42,36 @@ export class IncompleteMarkdownParser {
 		lineContexts: []
 	};
 
+	// Incremental cache for streaming append detection
+	private _incCache: {
+		input: string;
+		// Number of completed lines (lines ending with \n) that are fully stable
+		stableLineCount: number;
+		// Byte offset where stable lines end (position of last \n + 1 in stable region)
+		stableEndOffset: number;
+		// Context state at end of stable lines (for resuming contextManager scan)
+		ctxState: {
+			inCodeBlock: boolean;
+			inMathBlock: boolean;
+			inCenterBlock: boolean;
+			inRightBlock: boolean;
+		};
+		// Processed lines for stable lines
+		processedLines: string[];
+		// lineContexts for stable lines
+		lineContexts: Array<{ code: boolean; math: boolean; center: boolean; right: boolean }>;
+		// MDX state for stable lines
+		mdxOpenTags: Array<{ tagName: string; lineIndex: number }>;
+		mdxLineStates: Array<{ inMdx: boolean; incompletePositions: number[] }>;
+	} | null = null;
+
 	setState = (state: Partial<ParseState>) => {
 		this.state = { ...this.state, ...state };
 	};
 
 	constructor(plugins: Plugin[] = []) {
 		this.plugins = plugins;
+		this._skipSets = plugins.map((p) => new Set(p.skipInBlockTypes || []));
 	}
 
 	// Main parsing methods
@@ -54,6 +80,23 @@ export class IncompleteMarkdownParser {
 			return text;
 		}
 
+		// Try incremental path: if text is an append of previous input,
+		// reuse cached stable lines and only process from the last changed line.
+		const inc = this._incCache;
+		if (
+			inc &&
+			text.length >= inc.input.length &&
+			text.startsWith(inc.input.substring(0, inc.stableEndOffset))
+		) {
+			const incResult = this._parseIncremental(text, inc);
+			if (incResult !== null) return incResult;
+		}
+
+		// Full parse (first call, or text was replaced/shortened)
+		return this._parseFull(text);
+	}
+
+	private _parseFull(text: string): string {
 		this.state = {
 			currentLine: 0,
 			context: 'normal',
@@ -63,6 +106,9 @@ export class IncompleteMarkdownParser {
 		};
 
 		let result = text;
+
+		// Split once and store in state for preprocess hooks to reuse
+		this.state._lines = result.split('\n');
 
 		// Execute preprocess hooks for all plugins
 		for (const plugin of this.plugins) {
@@ -75,7 +121,11 @@ export class IncompleteMarkdownParser {
 					});
 					if (typeof preprocessResult === 'string') {
 						result = preprocessResult;
+						this.state._lines = undefined;
 					} else {
+						if (preprocessResult.text !== result) {
+							this.state._lines = undefined;
+						}
 						result = preprocessResult.text;
 						this.setState(preprocessResult.state);
 					}
@@ -85,8 +135,8 @@ export class IncompleteMarkdownParser {
 			}
 		}
 
-		// Split into lines for processing
-		const lines = result.split('\n');
+		// Reuse cached lines if text wasn't modified by preprocess
+		const lines = this.state._lines || result.split('\n');
 		const processedLines = [...lines];
 
 		// Process each line with each plugin
@@ -94,17 +144,18 @@ export class IncompleteMarkdownParser {
 			this.state.currentLine = i;
 			let line = processedLines[i];
 
-			for (const plugin of this.plugins) {
-				// Skip this plugin if current line is in a blocking context
+			for (let pi = 0; pi < this.plugins.length; pi++) {
+				const plugin = this.plugins[pi];
 				const currentLineContext = this.state.lineContexts?.[i];
+				const skipSet = this._skipSets[pi];
 				const shouldSkip =
 					currentLineContext &&
-					(plugin.skipInBlockTypes || []).some(
-						(blockType) => currentLineContext[blockType as 'code' | 'math']
-					);
-				if (shouldSkip) {
-					continue;
-				}
+					skipSet.size > 0 &&
+					((currentLineContext.code && skipSet.has('code')) ||
+						(currentLineContext.math && skipSet.has('math')) ||
+						(currentLineContext.center && skipSet.has('center')) ||
+						(currentLineContext.right && skipSet.has('right')));
+				if (shouldSkip) continue;
 
 				try {
 					const match = plugin.pattern ? line.match(plugin.pattern) : line.match(/.*/);
@@ -139,7 +190,250 @@ export class IncompleteMarkdownParser {
 			}
 		}
 
+		// Update incremental cache
+		this._updateIncCache(text, processedLines);
+
 		return result;
+	}
+
+	private _parseIncremental(text: string, inc: NonNullable<typeof this._incCache>): string | null {
+		// Find how many completed lines in common.
+		// Stable lines from cache are guaranteed to be a prefix of new text.
+		const lines = text.split('\n');
+
+		// Verify stable lines haven't changed (they should be identical since we checked startsWith)
+		for (let i = 0; i < inc.stableLineCount; i++) {
+			if (lines[i] !== inc.processedLines[i]) {
+				// Something changed in stable region — fall back to full parse
+				return null;
+			}
+		}
+
+		// Resume contextManager scanning from the stable boundary
+		let { inCodeBlock, inMathBlock, inCenterBlock, inRightBlock } = inc.ctxState;
+		const lineContexts: Array<{ code: boolean; math: boolean; center: boolean; right: boolean }> = [
+			...inc.lineContexts
+		];
+
+		for (let i = inc.stableLineCount; i < lines.length; i++) {
+			const stripped = lines[i].replace(/^(?:\s*>\s*)+/, '').trim();
+
+			if (stripped.startsWith('```') || stripped.startsWith('~~~')) {
+				inCodeBlock = !inCodeBlock;
+			}
+			if (stripped.startsWith('$$') && !stripped.includes('$$', 2)) {
+				inMathBlock = !inMathBlock;
+			}
+			if (stripped === '[center]') inCenterBlock = true;
+			if (stripped === '[/center]') inCenterBlock = false;
+			if (stripped === '[right]') inRightBlock = true;
+			if (stripped === '[/right]') inRightBlock = false;
+
+			lineContexts[i] = {
+				code: inCodeBlock,
+				math: inMathBlock,
+				center: inCenterBlock,
+				right: inRightBlock
+			};
+		}
+
+		const finalContexts = new Set<'code' | 'math' | 'center' | 'right'>();
+		if (inCodeBlock) finalContexts.add('code');
+		if (inMathBlock) finalContexts.add('math');
+		if (inCenterBlock) finalContexts.add('center');
+		if (inRightBlock) finalContexts.add('right');
+
+		// Resume MDX scanning from stable boundary
+		const mdxOpenTags = [...inc.mdxOpenTags];
+		const mdxLineStates: Array<{ inMdx: boolean; incompletePositions: number[] }> = [
+			...inc.mdxLineStates
+		];
+
+		for (let i = inc.stableLineCount; i < lines.length; i++) {
+			const line = lines[i];
+			let inMdx = false;
+			const incompletePositions: number[] = [];
+
+			// Scan for MDX tags (same logic as mdx preprocess)
+			let searchPos = 0;
+			while (searchPos < line.length) {
+				const tagStart = line.indexOf('<', searchPos);
+				if (tagStart === -1 || tagStart >= line.length - 1) break;
+
+				const nextChar = line[tagStart + 1];
+				if (!/[A-Z]/.test(nextChar)) {
+					searchPos = tagStart + 1;
+					continue;
+				}
+
+				const selfClosingMatch = line
+					.substring(tagStart)
+					.match(/^<([A-Z][a-zA-Z0-9]*)((?:\s+\w+=(?:"[^"]*"|{[^}]*}))*)\\s*\/>/);
+				if (selfClosingMatch) {
+					searchPos = tagStart + selfClosingMatch[0].length;
+					continue;
+				}
+
+				const completeMatch = line
+					.substring(tagStart)
+					.match(/^<([A-Z][a-zA-Z0-9]*)((?:\s+\w+=(?:"[^"]*"|{[^}]*}))*)\\s*>.*?<\/\1>/);
+				if (completeMatch) {
+					searchPos = tagStart + completeMatch[0].length;
+					continue;
+				}
+
+				const openTagMatch = line
+					.substring(tagStart)
+					.match(/^<([A-Z][a-zA-Z0-9]*)((?:\s+\w+=(?:"[^"]*"|{[^}]*}))*)\\s*>/);
+				if (openTagMatch) {
+					mdxOpenTags.push({ tagName: openTagMatch[1], lineIndex: i });
+					inMdx = true;
+					searchPos = tagStart + openTagMatch[0].length;
+					continue;
+				}
+
+				const incompleteSelfClosing = line
+					.substring(tagStart)
+					.match(/^<([A-Z][a-zA-Z0-9]*)[^>]*\/$/);
+				if (incompleteSelfClosing) {
+					incompletePositions.push(tagStart);
+					break;
+				}
+
+				const incompleteTag = line.substring(tagStart).match(/^<([A-Z][a-zA-Z0-9]*)(?:\s+[^>]*)?$/);
+				if (incompleteTag) {
+					incompletePositions.push(tagStart);
+					break;
+				}
+
+				searchPos = tagStart + 1;
+			}
+
+			const closeTagMatches = line.matchAll(/<\/([A-Z][a-zA-Z0-9]*)>/g);
+			for (const closeMatch of closeTagMatches) {
+				const tagName = closeMatch[1];
+				const openIndex = mdxOpenTags.findIndex((t) => t.tagName === tagName);
+				if (openIndex !== -1) mdxOpenTags.splice(openIndex, 1);
+			}
+
+			mdxLineStates[i] = { inMdx, incompletePositions };
+		}
+
+		// Set up state for per-line processing and postprocess
+		this.state = {
+			currentLine: 0,
+			context: 'normal',
+			blockingContexts: finalContexts,
+			lineContexts,
+			fenceInfo: undefined,
+			mdxUnclosedTags: mdxOpenTags,
+			mdxLineStates
+		};
+
+		// Build processedLines: reuse cached lines, process only new/changed lines
+		const processedLines: string[] = [];
+		for (let i = 0; i < inc.stableLineCount; i++) {
+			processedLines[i] = inc.processedLines[i];
+		}
+
+		// Process lines from stableLineCount onward
+		for (let i = inc.stableLineCount; i < lines.length; i++) {
+			this.state.currentLine = i;
+			let line = lines[i];
+
+			for (let pi = 0; pi < this.plugins.length; pi++) {
+				const plugin = this.plugins[pi];
+				const currentLineContext = lineContexts[i];
+				const skipSet = this._skipSets[pi];
+				const shouldSkip =
+					currentLineContext &&
+					skipSet.size > 0 &&
+					((currentLineContext.code && skipSet.has('code')) ||
+						(currentLineContext.math && skipSet.has('math')) ||
+						(currentLineContext.center && skipSet.has('center')) ||
+						(currentLineContext.right && skipSet.has('right')));
+				if (shouldSkip) continue;
+
+				try {
+					const match = plugin.pattern ? line.match(plugin.pattern) : line.match(/.*/);
+					if (match && plugin.handler) {
+						line = plugin.handler({
+							line,
+							text: line,
+							match,
+							state: this.state,
+							setState: this.setState
+						});
+					}
+				} catch (error) {
+					console.error(`Plugin ${plugin.name} failed on line ${i}:`, error);
+				}
+			}
+
+			processedLines[i] = line;
+		}
+
+		// Rebuild and postprocess
+		let result = processedLines.join('\n');
+
+		for (const plugin of this.plugins) {
+			if (plugin.postprocess) {
+				try {
+					result = plugin.postprocess({ text: result, state: this.state, setState: this.setState });
+				} catch (error) {
+					console.error(`Plugin ${plugin.name} afterParse hook failed:`, error);
+				}
+			}
+		}
+
+		// Update cache
+		this._updateIncCache(text, processedLines);
+
+		return result;
+	}
+
+	private _updateIncCache(input: string, processedLines: string[]): void {
+		// Find the last newline — lines before it are stable
+		const lastNL = input.lastIndexOf('\n');
+		if (lastNL < 0) {
+			this._incCache = null;
+			return;
+		}
+
+		const stableLineCount = input.substring(0, lastNL + 1).split('\n').length - 1;
+		const stableEndOffset = lastNL + 1;
+
+		// Compute context state at end of stable lines
+		let inCodeBlock = false;
+		let inMathBlock = false;
+		let inCenterBlock = false;
+		let inRightBlock = false;
+		const ctxLineContexts = this.state.lineContexts || [];
+
+		if (stableLineCount > 0 && ctxLineContexts[stableLineCount - 1]) {
+			const lastCtx = ctxLineContexts[stableLineCount - 1];
+			inCodeBlock = lastCtx.code;
+			inMathBlock = lastCtx.math;
+			inCenterBlock = lastCtx.center;
+			inRightBlock = lastCtx.right;
+		}
+
+		// Collect MDX open tags that are within stable lines
+		const mdxOpenTags = (this.state.mdxUnclosedTags || []).filter(
+			(t) => t.lineIndex < stableLineCount
+		);
+		const mdxLineStates = (this.state.mdxLineStates || []).slice(0, stableLineCount);
+
+		this._incCache = {
+			input,
+			stableLineCount,
+			stableEndOffset,
+			ctxState: { inCodeBlock, inMathBlock, inCenterBlock, inRightBlock },
+			processedLines: processedLines.slice(0, stableLineCount),
+			lineContexts: ctxLineContexts.slice(0, stableLineCount),
+			mdxOpenTags,
+			mdxLineStates
+		};
 	}
 
 	// Create default plugins that replicate the original handler functions
@@ -148,9 +442,9 @@ export class IncompleteMarkdownParser {
 			// Block-level plugin that manages blocking contexts
 			{
 				name: 'contextManager',
-				preprocess: ({ text }) => {
+				preprocess: ({ text, state }) => {
 					// Pre-scan the entire text to establish blocking contexts
-					const lines = text.split('\n');
+					const lines = state._lines || text.split('\n');
 					let inCodeBlock = false;
 					let inMathBlock = false;
 					let inCenterBlock = false;
@@ -342,18 +636,8 @@ export class IncompleteMarkdownParser {
 						if (line[i] === '*') {
 							const prevChar = i > 0 ? line[i - 1] : '';
 							const nextChar = i < line.length - 1 ? line[i + 1] : '';
-							let lineStartIndex = i;
-							for (let j = i - 1; j >= 0; j--) {
-								if (line[j] === '\n') {
-									lineStartIndex = j + 1;
-									break;
-								}
-								if (j === 0) {
-									lineStartIndex = 0;
-									break;
-								}
-							}
-							const beforeAsterisk = line.substring(lineStartIndex, i);
+							// Line is already a single line (split by \n earlier), so lineStart is always 0
+							const beforeAsterisk = line.substring(0, i);
 							if (beforeAsterisk.trim() === '' && (nextChar === ' ' || nextChar === '\t')) {
 								continue;
 							}
@@ -394,9 +678,9 @@ export class IncompleteMarkdownParser {
 					let singleBacktickCount = 0;
 					for (let i = 0; i < line.length; i++) {
 						if (line[i] === '`') {
-							const isTripleStart = line.substring(i, i + 3) === '```';
-							const isTripleMiddle = i > 0 && line.substring(i - 1, i + 2) === '```';
-							const isTripleEnd = i > 1 && line.substring(i - 2, i + 1) === '```';
+							const isTripleStart = line[i + 1] === '`' && line[i + 2] === '`';
+							const isTripleMiddle = i > 0 && line[i - 1] === '`' && line[i + 1] === '`';
+							const isTripleEnd = i > 1 && line[i - 2] === '`' && line[i - 1] === '`';
 							const isPartOfTriple = isTripleStart || isTripleMiddle || isTripleEnd;
 							if (!isPartOfTriple) {
 								singleBacktickCount++;
@@ -426,6 +710,8 @@ export class IncompleteMarkdownParser {
 				pattern: /[\s\S]*/,
 				skipInBlockTypes: ['code', 'math'],
 				handler: ({ line }) => {
+					// Pre-compute math ranges once for this line
+					const mathRanges = computeMathRanges(line);
 					// Inline countSingleUnderscores logic
 					let singleUnderscores = 0;
 					for (let i = 0; i < line.length; i++) {
@@ -433,7 +719,7 @@ export class IncompleteMarkdownParser {
 							const prevChar = i > 0 ? line[i - 1] : '';
 							const nextChar = i < line.length - 1 ? line[i + 1] : '';
 							if (prevChar === '\\') continue;
-							if (isWithinMathBlock(line, i)) continue;
+							if (isInMathRange(mathRanges, i)) continue;
 							if (
 								prevChar &&
 								nextChar &&
@@ -457,7 +743,7 @@ export class IncompleteMarkdownParser {
 								line[i - 1] !== '_' &&
 								line[i + 1] !== '_' &&
 								line[i - 1] !== '\\' &&
-								!isWithinMathBlock(line, i)
+								!isInMathRange(mathRanges, i)
 							) {
 								const prevChar = i > 0 ? line[i - 1] : '';
 								const nextChar = i < line.length - 1 ? line[i + 1] : '';
@@ -503,7 +789,8 @@ export class IncompleteMarkdownParser {
 
 					if (singleTildes % 2 === 1) {
 						const lastTildeIndex = line.lastIndexOf('~');
-						if (lastTildeIndex !== -1 && !isWithinMathBlock(line, lastTildeIndex)) {
+						const mathRanges = computeMathRanges(line);
+						if (lastTildeIndex !== -1 && !isInMathRange(mathRanges, lastTildeIndex)) {
 							const endOfCellOrLine = findEndOfCellOrLineContaining(line, lastTildeIndex);
 							// Only complete if there's content after the tilde
 							const contentAfterTilde = line.substring(lastTildeIndex + 1, endOfCellOrLine);
@@ -544,9 +831,10 @@ export class IncompleteMarkdownParser {
 
 					if (singleCarets % 2 === 1) {
 						const lastCaretIndex = line.lastIndexOf('^');
+						const mathRanges = computeMathRanges(line);
 						if (
 							lastCaretIndex !== -1 &&
-							!isWithinMathBlock(line, lastCaretIndex) &&
+							!isInMathRange(mathRanges, lastCaretIndex) &&
 							!isWithinFootnoteRef(line, lastCaretIndex)
 						) {
 							const endOfCellOrLine = findEndOfCellOrLineContaining(line, lastCaretIndex);
@@ -698,8 +986,7 @@ export class IncompleteMarkdownParser {
 						let unclosedBrackets = 0;
 						for (let i = 0; i < line.length; i++) {
 							if (line[i] === '[' && (i === 0 || line[i - 1] !== '\\')) {
-								const restOfLine = line.substring(i + 1);
-								const closingIndex = restOfLine.indexOf(']');
+								const closingIndex = line.indexOf(']', i + 1);
 								if (closingIndex === -1) {
 									unclosedBrackets++;
 								}
@@ -798,9 +1085,9 @@ export class IncompleteMarkdownParser {
 			{
 				name: 'mdx',
 				skipInBlockTypes: ['code', 'math', 'center', 'right'],
-				preprocess: ({ text }) => {
+				preprocess: ({ text, state }) => {
 					// Track MDX component states across the entire text
-					const lines = text.split('\n');
+					const lines = state._lines || text.split('\n');
 					const openTags: Array<{ tagName: string; lineIndex: number }> = [];
 					let mdxLineStates: Array<{ inMdx: boolean; incompletePositions: number[] }> = [];
 
@@ -976,6 +1263,66 @@ const isWithinMathBlock = (text: string, position: number): boolean => {
 	}
 
 	return inInlineMath || inBlockMath;
+};
+
+/**
+ * Pre-compute math ranges for a line in a single O(n) pass.
+ * Returns an array of [start, end] pairs where math blocks are active.
+ * Use with `isInMathRange` for O(1) position checks instead of O(n) `isWithinMathBlock`.
+ */
+const computeMathRanges = (text: string): Array<[number, number]> => {
+	const ranges: Array<[number, number]> = [];
+	let inInlineMath = false;
+	let inBlockMath = false;
+	let mathStart = -1;
+
+	for (let i = 0; i < text.length; i++) {
+		if (text[i] === '\\' && text[i + 1] === '$') {
+			i++;
+			continue;
+		}
+
+		if (text[i] === '$') {
+			if (text[i + 1] === '$') {
+				if (inBlockMath) {
+					ranges.push([mathStart, i + 1]);
+					inBlockMath = false;
+				} else {
+					if (inInlineMath) {
+						ranges.push([mathStart, i]);
+						inInlineMath = false;
+					}
+					inBlockMath = true;
+					mathStart = i;
+				}
+				i++;
+				inInlineMath = false;
+			} else if (!inBlockMath) {
+				if (inInlineMath) {
+					ranges.push([mathStart, i]);
+					inInlineMath = false;
+				} else {
+					inInlineMath = true;
+					mathStart = i;
+				}
+			}
+		}
+	}
+
+	// If still in a math block at end, add the range to the end
+	if (inInlineMath || inBlockMath) {
+		ranges.push([mathStart, text.length]);
+	}
+
+	return ranges;
+};
+
+const isInMathRange = (ranges: Array<[number, number]>, position: number): boolean => {
+	for (const [start, end] of ranges) {
+		if (position > start && position < end) return true;
+		if (start > position) break; // ranges are sorted, no need to check further
+	}
+	return false;
 };
 
 const isWithinFootnoteRef = (text: string, position: number): boolean => {

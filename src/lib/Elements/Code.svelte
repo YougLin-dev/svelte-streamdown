@@ -87,7 +87,7 @@
 		{#if highlighter.isReady(streamdown.shikiTheme, token.lang)}
 			<pre class={streamdown.theme.code.pre}><code
 					>{@render Tokens(
-						highlighter.highlightCode(token.text, token.lang, streamdown.shikiTheme)
+						highlighter.highlightCode(token.text, token.lang, streamdown.shikiTheme, id)
 					)}</code
 				></pre>
 		{:else}
