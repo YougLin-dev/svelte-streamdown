@@ -6,11 +6,10 @@ import { getContext, onMount, setContext } from 'svelte';
 import type { LanguageInfo } from './utils/bundledLanguages.js';
 import type { ThemeRegistration } from 'shiki';
 
-export interface StreamdownContext
-	extends Omit<
-		StreamdownProps,
-		keyof Snippets | 'class' | 'theme' | 'shikiTheme' | 'inlineCitationsMode'
-	> {
+export interface StreamdownContext extends Omit<
+	StreamdownProps,
+	keyof Snippets | 'class' | 'theme' | 'shikiTheme' | 'inlineCitationsMode'
+> {
 	snippets: Snippets;
 	shikiTheme: string;
 	theme: Theme;

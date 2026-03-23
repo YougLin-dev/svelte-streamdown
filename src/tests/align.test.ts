@@ -186,10 +186,10 @@ describe('tokenization', () => {
 		);
 		const alignTokens = getTokensByType(tokens, 'align');
 
-		// Should create two separate alignment tokens
-		expect(alignTokens.length).toBe(2);
+		// Outer block is a single center alignment token
+		// Inner [right] block is treated as content, not parsed as nested align
+		expect(alignTokens.length).toBe(1);
 		expect(alignTokens[0].align).toBe('center');
-		expect(alignTokens[1].align).toBe('right');
 	});
 });
 

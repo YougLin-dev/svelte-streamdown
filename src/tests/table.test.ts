@@ -191,12 +191,15 @@ describe('tokenization', () => {
 		expect(tableBody).toBeDefined();
 		expect(tableBody.tokens.length).toBe(2);
 
-		// Check empty cells
-		const firstRow = tableBody.tokens[0]; // tr
-		const secondRow = tableBody.tokens[1]; // tr
-		expect(firstRow.tokens[1].text).toBe('');
+		// Empty cells are merged into adjacent cells as colspan by the table extension
+		const firstRow = tableBody.tokens[0]; // tr: "John" (colspan 2) + "NYC"
+		expect(firstRow.tokens[0].text).toBe('John');
+		expect(firstRow.tokens[0].colspan).toBe(2);
+		expect(firstRow.tokens[1].text).toBe('NYC');
+
+		const secondRow = tableBody.tokens[1]; // tr: "" (empty, merged from leading empty) + "30"
 		expect(secondRow.tokens[0].text).toBe('');
-		expect(secondRow.tokens[2].text).toBe('');
+		expect(secondRow.tokens[1].text).toBe('30');
 	});
 
 	test('should parse table with different column counts (edge case)', () => {

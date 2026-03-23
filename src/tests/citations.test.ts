@@ -269,14 +269,14 @@ describe('incomplete markdown', () => {
 		const input = 'This has an incomplete citation [ref';
 		const result = parseIncompleteMarkdown(input);
 
-		expect(result).toBe('This has an incomplete citation [ref]');
+		expect(result).toBe('This has an incomplete citation [ref](streamdown:incomplete-link)');
 	});
 
 	test('should complete incomplete citations with spaces', () => {
 		const input = 'Citation with spaces [ref ref2';
 		const result = parseIncompleteMarkdown(input);
 
-		expect(result).toBe('Citation with spaces [ref ref2]');
+		expect(result).toBe('Citation with spaces [ref ref2](streamdown:incomplete-link)');
 	});
 
 	test('should not complete citations that are part of markdown links', () => {

@@ -166,24 +166,26 @@ export class IncompleteMarkdownParser {
 
 					for (let i = 0; i < lines.length; i++) {
 						const line = lines[i];
+						// Strip blockquote prefix for content detection
+						const stripped = line.replace(/^(?:\s*>\s*)+/, '').trim();
 
 						// Check for block boundaries
-						if (line.trim().startsWith('```') || line.trim().startsWith('~~~')) {
+						if (stripped.startsWith('```') || stripped.startsWith('~~~')) {
 							inCodeBlock = !inCodeBlock;
 						}
-						if (line.trim().startsWith('$$') && !line.trim().includes('$$', 2)) {
+						if (stripped.startsWith('$$') && !stripped.includes('$$', 2)) {
 							inMathBlock = !inMathBlock;
 						}
-						if (line.trim() === '[center]') {
+						if (stripped === '[center]') {
 							inCenterBlock = true;
 						}
-						if (line.trim() === '[/center]') {
+						if (stripped === '[/center]') {
 							inCenterBlock = false;
 						}
-						if (line.trim() === '[right]') {
+						if (stripped === '[right]') {
 							inRightBlock = true;
 						}
-						if (line.trim() === '[/right]') {
+						if (stripped === '[/right]') {
 							inRightBlock = false;
 						}
 
@@ -212,20 +214,32 @@ export class IncompleteMarkdownParser {
 					};
 				},
 				postprocess: ({ text, state }) => {
+					let result = text;
 					// Complete incomplete blocks at end of input
+					// Close code/math first, then alignment (inner to outer)
 					if (state.blockingContexts.has('code')) {
-						return text + '\n```';
+						result += '\n```';
 					}
 					if (state.blockingContexts.has('math')) {
-						return text + '\n$$';
+						result += '\n$$';
 					}
 					if (state.blockingContexts.has('center')) {
-						return text + '\n[/center]';
+						// Only close if there's content after the opening tag
+						const lines = result.split('\n');
+						const centerLineIdx = lines.findIndex((l) => l.trim() === '[center]');
+						if (centerLineIdx !== -1 && centerLineIdx < lines.length - 1) {
+							result += '\n[/center]';
+						}
 					}
 					if (state.blockingContexts.has('right')) {
-						return text + '\n[/right]';
+						// Only close if there's content after the opening tag
+						const lines = result.split('\n');
+						const rightLineIdx = lines.findIndex((l) => l.trim() === '[right]');
+						if (rightLineIdx !== -1 && rightLineIdx < lines.length - 1) {
+							result += '\n[/right]';
+						}
 					}
-					return text;
+					return result;
 				}
 			},
 			{
@@ -502,37 +516,11 @@ export class IncompleteMarkdownParser {
 				}
 			},
 			{
-				name: 'inlineCitation',
-				pattern: /\[/,
-				skipInBlockTypes: ['code', 'math'],
-				handler: ({ line }) => {
-					// Count unescaped opening brackets without matching closing brackets
-					let unclosedBrackets = 0;
-					for (let i = 0; i < line.length; i++) {
-						if (line[i] === '[' && (i === 0 || line[i - 1] !== '\\')) {
-							// Check if this bracket has a matching closing bracket later in the line
-							const restOfLine = line.substring(i + 1);
-							const closingIndex = restOfLine.indexOf(']');
-							if (closingIndex === -1) {
-								unclosedBrackets++;
-							}
-						}
-					}
-
-					// If there's an odd number of unclosed brackets, add closing bracket
-					if (unclosedBrackets % 2 === 1) {
-						const endOfCellOrLine = findEndOfCellOrLineContaining(line, line.length - 1);
-						return line.substring(0, endOfCellOrLine) + ']' + line.substring(endOfCellOrLine);
-					}
-
-					return line;
-				}
-			},
-			{
 				name: 'footnoteRef',
 				pattern: /\[\^[^\]\s,]*/,
 				skipInBlockTypes: ['code', 'math'],
 				handler: ({ line }) => {
+					// Check if there's an incomplete footnote ref (no ] anywhere in the line)
 					if (!line.includes(']')) {
 						return line.replace(/\[\^[^\]\s,]*/, '[^streamdown:footnote]');
 					}
@@ -706,42 +694,105 @@ export class IncompleteMarkdownParser {
 					// Check for incomplete links without URLs: [text
 					const linkMatch = line.match(/(!?\[)([^\]]*?)$/);
 					if (linkMatch && !line.includes('](')) {
-						const [, openBracket, linkTextWithPossibleBoundary] = linkMatch;
-						// Find the position of the opening bracket
-						const bracketIndex = line.lastIndexOf(openBracket);
-						const endOfCellOrLine = findEndOfCellOrLineContaining(line, bracketIndex);
+						// Count unclosed brackets to distinguish links from citations
+						let unclosedBrackets = 0;
+						for (let i = 0; i < line.length; i++) {
+							if (line[i] === '[' && (i === 0 || line[i - 1] !== '\\')) {
+								const restOfLine = line.substring(i + 1);
+								const closingIndex = restOfLine.indexOf(']');
+								if (closingIndex === -1) {
+									unclosedBrackets++;
+								}
+							}
+						}
+						// Only handle as link/image if there's exactly one unclosed bracket
+						// Multiple unclosed brackets indicate citations, handled by inlineCitation
+						// Also skip task list checkbox patterns ([x, [X, [ )
+						if (unclosedBrackets === 1) {
+							const bracketContent = linkMatch[2].trim();
+							// Skip task list checkboxes
+							if (/^[xX ]?$/.test(bracketContent)) {
+								return line;
+							}
+							const [, openBracket, linkTextWithPossibleBoundary] = linkMatch;
+							// Find the position of the opening bracket
+							const bracketIndex = line.lastIndexOf(openBracket);
+							const endOfCellOrLine = findEndOfCellOrLineContaining(line, bracketIndex);
 
-						// Extract the clean link text (remove any trailing | or whitespace)
-						const linkText = linkTextWithPossibleBoundary.replace(/[\s|]+$/, '');
-						const marker = openBracket.startsWith('!')
-							? 'streamdown:incomplete-image'
-							: 'streamdown:incomplete-link';
+							// Extract the clean link text (remove any trailing | or whitespace)
+							const linkText = linkTextWithPossibleBoundary.replace(/[\s|]+$/, '');
+							const marker = openBracket.startsWith('!')
+								? 'streamdown:incomplete-image'
+								: 'streamdown:incomplete-link';
 
-						// Replace from bracket to end of cell/line, including boundary if it's |
-						const includeBoundary = endOfCellOrLine < line.length && line[endOfCellOrLine] === '|';
-						const incompleteEnd = includeBoundary ? endOfCellOrLine + 1 : endOfCellOrLine;
-						const incompletePart = line.substring(bracketIndex, incompleteEnd);
-						const completedPart =
-							openBracket + linkText + '](' + marker + ')' + (includeBoundary ? '|' : '');
+							// Replace from bracket to end of cell/line, including boundary if it's |
+							const includeBoundary =
+								endOfCellOrLine < line.length && line[endOfCellOrLine] === '|';
+							const incompleteEnd = includeBoundary ? endOfCellOrLine + 1 : endOfCellOrLine;
+							const incompletePart = line.substring(bracketIndex, incompleteEnd);
+							const completedPart =
+								openBracket + linkText + '](' + marker + ')' + (includeBoundary ? '|' : '');
 
-						return line.replace(incompletePart, completedPart);
+							return line.replace(incompletePart, completedPart);
+						}
 					}
 					return line;
 				}
 			},
 			{
-				name: 'alignmentBlocks',
-				pattern: /^(\s*\[(center|right)\])$/,
+				name: 'inlineCitation',
+				pattern: /\[/,
 				skipInBlockTypes: ['code', 'math'],
-				handler: ({ line, state }) => {
-					// Check if this is an opening alignment tag without content or closing tag
-					const alignMatch = line.match(/^(\s*\[(center|right)\])$/);
-					if (alignMatch) {
-						const indent = alignMatch[1].length - alignMatch[1].trim().length;
-						const alignType = alignMatch[2];
-						return line + '\n' + ' '.repeat(indent) + '[/' + alignType + ']';
+				handler: ({ line }) => {
+					// Skip if line has complete links/images (contains '](' pattern)
+					if (line.includes('](')) {
+						return line;
 					}
-					return line;
+
+					// Find all unclosed brackets and close each one
+					const unclosedPositions: number[] = [];
+					for (let i = 0; i < line.length; i++) {
+						if (line[i] === '[' && (i === 0 || line[i - 1] !== '\\')) {
+							const restOfLine = line.substring(i + 1);
+							const closingIndex = restOfLine.indexOf(']');
+							if (closingIndex === -1) {
+								unclosedPositions.push(i);
+							}
+						}
+					}
+
+					if (unclosedPositions.length === 0) {
+						return line;
+					}
+
+					// Close each unclosed bracket by finding the end of its content
+					// Process from right to left to preserve indices
+					let result = line;
+					for (let j = unclosedPositions.length - 1; j >= 0; j--) {
+						const bracketPos = unclosedPositions[j];
+						const endOfCellOrLine = findEndOfCellOrLineContaining(result, bracketPos);
+
+						if (j < unclosedPositions.length - 1) {
+							// There's another unclosed bracket after this one
+							// Find the first space after opening bracket content (end of citation ref)
+							const nextBracketPos = unclosedPositions[j + 1];
+							const textBetween = result.substring(bracketPos + 1, nextBracketPos);
+							const firstSpaceIdx = textBetween.indexOf(' ');
+							if (firstSpaceIdx !== -1) {
+								const closingPos = bracketPos + 1 + firstSpaceIdx;
+								result = result.substring(0, closingPos) + ']' + result.substring(closingPos);
+							} else {
+								result =
+									result.substring(0, endOfCellOrLine) + ']' + result.substring(endOfCellOrLine);
+							}
+						} else {
+							// Last unclosed bracket, close at end of cell/line
+							result =
+								result.substring(0, endOfCellOrLine) + ']' + result.substring(endOfCellOrLine);
+						}
+					}
+
+					return result;
 				}
 			},
 			{

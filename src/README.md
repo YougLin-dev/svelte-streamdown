@@ -361,7 +361,7 @@ This Svelte port maintains feature parity with the original [Streamdown](https:/
 ```css
 @import 'tailwindcss';
 /* Add Streamdown styles to your Tailwind build */
-@source "../node_modules/svelte-streamdown/**/*";
+@source '../node_modules/svelte-streamdown/**/*';
 ```
 
 ## 🎭 Animation System
