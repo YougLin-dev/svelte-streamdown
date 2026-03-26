@@ -151,6 +151,7 @@ const _defaultLexOptions = parseExtensions(
 const _defaultBlockOptions = parseExtensions(
 	markedHr,
 	..._defaultFootnoteExtensions,
+	...markedMath,
 	markedDl,
 	markedTable,
 	markedAlign,

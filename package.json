@@ -1,6 +1,6 @@
 {
-	"name": "svelte-streamdown",
-	"version": "3.1.0-perf.0",
+	"name": "@youglin/svelte-streamdown",
+	"version": "3.1.0-perf.1",
 	"scripts": {
 		"dev": "vite dev",
 		"build": "vite build && npm run prepack",
