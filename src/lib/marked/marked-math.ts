@@ -2,7 +2,8 @@ import type { Extension } from './index.js';
 
 // Math parsing rules
 // Block math: supports both newline format ($$\nmath\n$$) and single-line format ($$math$$)
-const blockRule = /^(\$\$)(?:\n((?:\\[\s\S]|[^\\])+?)\n\1(?:\n|$)|([^$\n]+?)\1(?=\s|$|$))/;
+const blockRule =
+	/^[ \t]*(\$\$)(?:\n((?:\\[\s\S]|[^\\])+?)\n[ \t]*\1(?:\n|$)|([^$\n]+?)\1(?=\s|$|$))/;
 // Inline math: handles both single ($) and double ($$) dollar delimiters
 // Avoids matching currency by checking context and requiring proper content
 const inlineRule = /^(\${1,2})(?!\$)((?:[^$\n]|\\\$)*?)\1(?!\d)/;
