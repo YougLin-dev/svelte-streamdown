@@ -7,6 +7,7 @@
 	import type { Tokens } from 'marked';
 	import { type ThemedToken } from 'shiki';
 	import { untrack } from 'svelte';
+	import CodeHeader from './CodeHeader.svelte';
 	import { checkIcon, copyIcon, downloadIcon } from './icons.js';
 
 	const {
@@ -60,29 +61,7 @@
 	style={streamdown.isMounted ? streamdown.animationBlockStyle : ''}
 	class={streamdown.theme.code.base}
 >
-	<div class={streamdown.theme.code.header}>
-		<span class={streamdown.theme.code.language}>{token.lang}</span>
-		{#if streamdown.controls.code}
-			<div class={streamdown.theme.code.buttons}>
-				<button
-					class={streamdown.theme.components.button}
-					onclick={downloadCode}
-					title="Download code"
-					type="button"
-				>
-					{@render (streamdown.icons?.download || downloadIcon)()}
-				</button>
-
-				<button class={streamdown.theme.components.button} onclick={copy.copy} type="button">
-					{#if copy.isCopied}
-						{@render (streamdown.icons?.check || checkIcon)()}
-					{:else}
-						{@render (streamdown.icons?.copy || copyIcon)()}
-					{/if}
-				</button>
-			</div>
-		{/if}
-	</div>
+	<CodeHeader {token} buttons={DefaultButtons} />
 	<div style="height: fit-content; width: 100%;" class={streamdown.theme.code.container}>
 		{#if highlighter.isReady(streamdown.shikiTheme, token.lang)}
 			<pre class={streamdown.theme.code.pre}><code
@@ -119,4 +98,27 @@
 			{line.trim().length > 0 ? line : '\u200B'}
 		</span>
 	{/each}
+{/snippet}
+
+{#snippet DefaultButtons()}
+	{#if streamdown.controls.code}
+		<div class={streamdown.theme.code.buttons}>
+			<button
+				class={streamdown.theme.components.button}
+				onclick={downloadCode}
+				title="Download code"
+				type="button"
+			>
+				{@render (streamdown.icons?.download || downloadIcon)()}
+			</button>
+
+			<button class={streamdown.theme.components.button} onclick={copy.copy} type="button">
+				{#if copy.isCopied}
+					{@render (streamdown.icons?.check || checkIcon)()}
+				{:else}
+					{@render (streamdown.icons?.copy || copyIcon)()}
+				{/if}
+			</button>
+		</div>
+	{/if}
 {/snippet}

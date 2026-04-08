@@ -110,6 +110,13 @@ import type {
 	DescriptionToken
 } from './marked/marked-dl.js';
 
+export type CodeHeaderSnippetProps = {
+	token: Tokens.Code;
+	language: string | undefined;
+	controls: boolean;
+	buttons: Snippet;
+};
+
 type TokenSnippet = {
 	heading: Tokens.Heading;
 	paragraph: Tokens.Paragraph;
@@ -171,6 +178,8 @@ export type Snippets<Source extends Record<string, any> = Record<string, any>> =
 					: {})
 		]
 	>;
+} & {
+	codeHeader?: Snippet<[CodeHeaderSnippetProps]>;
 };
 
 export type StreamdownProps<Source extends Record<string, any> = Record<string, any>> = {

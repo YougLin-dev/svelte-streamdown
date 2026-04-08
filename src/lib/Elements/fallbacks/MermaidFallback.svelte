@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { useStreamdown } from '$lib/context.svelte.js';
 	import type { Tokens } from 'marked';
+	import CodeHeader from '../CodeHeader.svelte';
 
 	const {
 		token,
@@ -18,9 +19,7 @@
 		style={streamdown.isMounted ? streamdown.animationBlockStyle : ''}
 		class={streamdown.theme.code.base}
 	>
-		<div class={streamdown.theme.code.header}>
-			<span class={streamdown.theme.code.language}>mermaid</span>
-		</div>
+		<CodeHeader {token} language="mermaid" />
 		<div style="height: fit-content; width: 100%;" class={streamdown.theme.code.container}>
 			<pre class={streamdown.theme.code.pre}><code
 					>{#each token.text.split('\n') as line}<span class={streamdown.theme.code.line}

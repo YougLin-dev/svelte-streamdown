@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.1.0-perf.3
+
+### Added
+
+- Added a new `codeHeader` snippet API so consumers can customize code block headers without replacing the entire code renderer.
+
+### Changed
+
+- Refactored highlighted and fallback code blocks to share the same customizable header path.
+- Fallback code blocks now expose the same default header actions through `buttons()` as highlighted code blocks.
+- Documented `codeHeader` usage and added a browser test covering custom header rendering.
+
 ## 3.0.0
 
 ### ⚠️ Breaking Changes

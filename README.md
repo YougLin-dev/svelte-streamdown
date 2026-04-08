@@ -445,6 +445,44 @@ This heading will use a custom component!`;
 </Streamdown>
 ```
 
+### Custom Code Headers
+
+Use the `codeHeader` snippet when you want to keep Streamdown's built-in code block rendering, but replace the header layout.
+
+```svelte
+<script>
+	import { Streamdown } from 'svelte-streamdown';
+	import Code from 'svelte-streamdown/code';
+
+	let content = `\`\`\`html
+<div class="preview-card">Hello</div>
+\`\`\``;
+
+	function openPreview() {
+		// Your preview action here
+	}
+</script>
+
+<Streamdown {content} components={{ code: Code }}>
+	{#snippet codeHeader({ token, buttons })}
+		<div
+			class="flex items-center justify-between bg-muted/80 px-2 py-1 text-xs text-muted-foreground"
+		>
+			<span class="font-mono lowercase">{token.lang}</span>
+
+			<div class="flex items-center gap-2">
+				<button type="button" class="rounded px-2 py-1 hover:bg-background" onclick={openPreview}>
+					Preview
+				</button>
+				{@render buttons()}
+			</div>
+		</div>
+	{/snippet}
+</Streamdown>
+```
+
+`buttons()` renders Streamdown's default code actions, so you can insert your own controls without rebuilding copy/download behavior from scratch.
+
 ### Security Configuration
 
 ```svelte
@@ -541,7 +579,7 @@ When a heavy component is not provided:
 
 **Lists**: `ul`, `ol`, `li`
 
-**Code**: `code`, `codeSpan`
+**Code**: `code`, `codeHeader`, `codeSpan`
 
 **Tables**: `table`, `thead`, `tbody`, `tr`, `th`, `td`, `tfoot`
 

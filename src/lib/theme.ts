@@ -167,10 +167,12 @@ export const theme = {
 			Snippets,
 			| 'description'
 			| 'heading'
+			| 'codeHeader'
 			| 'footnotePopover'
 			| 'inlineCitationContent'
 			| 'inlineCitationPreview'
 			| 'inlineCitationPopover'
+			| 'mdx'
 	  >
 	| 'h1'
 	| 'h2'
