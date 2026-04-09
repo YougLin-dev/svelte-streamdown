@@ -2,7 +2,7 @@
 	import { useStreamdown } from '$lib/context.svelte.js';
 	import { save } from '$lib/utils/save.js';
 	import { useCopy } from '$lib/utils/copy.svelte.js';
-	import { languageExtensionMap } from '$lib/utils/hightlighter.svelte.js';
+	import { resolveCodeFileExtension } from '$lib/utils/code.js';
 	import type { Tokens } from 'marked';
 	import CodeHeader from '../CodeHeader.svelte';
 	import { checkIcon, copyIcon, downloadIcon } from '../icons.js';
@@ -24,10 +24,7 @@
 
 	const downloadCode = () => {
 		try {
-			const extension =
-				token.lang && token.lang in languageExtensionMap
-					? languageExtensionMap[token.lang as keyof typeof languageExtensionMap]
-					: 'txt';
+			const extension = resolveCodeFileExtension(token.lang);
 			const filename = `file.${extension}`;
 			const mimeType = 'text/plain';
 			save(filename, token.text, mimeType);

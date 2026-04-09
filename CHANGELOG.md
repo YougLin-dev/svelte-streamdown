@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.1.0-perf.4
+
+### Added
+
+- Exported `resolveCodeFileExtension()` as a public helper so consumers can reuse Streamdown's code download extension resolution.
+
+### Changed
+
+- Highlighted and fallback code downloads now use the shared `resolveCodeFileExtension()` helper.
+- `preview-*` code fence aliases such as `preview-html` now resolve to the underlying file extension when downloaded.
+
 ## 3.1.0-perf.3
 
 ### Added

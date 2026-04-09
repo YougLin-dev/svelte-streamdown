@@ -17,3 +17,4 @@ export {
 	createLanguageSet,
 	type LanguageInfo
 } from './utils/bundledLanguages.js';
+export { resolveCodeFileExtension } from './utils/code.js';
