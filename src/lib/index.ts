@@ -3,6 +3,8 @@ export {
 	useStreamdown,
 	type StreamdownProps,
 	type CodeHeaderSnippetProps,
+	type TableControlsFormat,
+	type TableControlsMethods,
 	type TableControlsSnippetProps
 } from './context.svelte.js';
 export { theme, shadcnTheme, mergeTheme, type Theme } from './theme.js';

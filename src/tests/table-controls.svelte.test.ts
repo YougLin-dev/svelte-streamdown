@@ -13,6 +13,7 @@ test('tableControls snippet can replace the controls while keeping default actio
 	await screen.getByRole('button', { name: 'Inspect table' }).click();
 
 	await expect.element(screen.getByText('Inspect clicks: 1')).toBeVisible();
+	await expect.element(screen.getByText(/\| Name \| Score \|/)).toBeVisible();
 });
 
 test('table header keeps its bottom border while the last body row does not', async () => {

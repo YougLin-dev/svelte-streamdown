@@ -117,10 +117,21 @@ export type CodeHeaderSnippetProps = {
 	buttons: Snippet;
 };
 
+export type TableControlsFormat = 'Markdown' | 'HTML' | 'CSV';
+
+export type TableControlsMethods = {
+	copy: (format: TableControlsFormat) => Promise<void>;
+	download: (format: TableControlsFormat) => void;
+	getContent: (format: TableControlsFormat) => string | null;
+};
+
 export type TableControlsSnippetProps = {
 	token: TableToken;
 	controls: boolean;
 	buttons: Snippet;
+	formats: TableControlsFormat[];
+	isCopied: boolean;
+	methods: TableControlsMethods;
 };
 
 type TokenSnippet = {

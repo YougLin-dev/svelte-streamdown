@@ -2,6 +2,7 @@
 	import { Streamdown } from '$lib/index.js';
 
 	let inspectClicks = $state(0);
+	let lastContent = $state('');
 
 	const content = `| Name | Score |
 | ---- | ----- |
@@ -10,14 +11,21 @@
 </script>
 
 <Streamdown {content}>
-	{#snippet tableControls({ buttons })}
-		<div data-testid="custom-table-controls" class="flex items-center justify-end gap-2 p-1">
-			<button type="button" aria-label="Inspect table" onclick={() => inspectClicks++}>
-				Inspect
-			</button>
-			{@render buttons()}
-		</div>
+	{#snippet tableControls({ methods, buttons })}
+		<button
+			data-testid="custom-table-controls"
+			type="button"
+			aria-label="Inspect table"
+			onclick={() => {
+				inspectClicks++;
+				lastContent = methods.getContent('Markdown') ?? '';
+			}}
+		>
+			Inspect
+		</button>
+		{@render buttons()}
 	{/snippet}
 </Streamdown>
 
 <p>Inspect clicks: {inspectClicks}</p>
+<p data-testid="last-content">{lastContent}</p>

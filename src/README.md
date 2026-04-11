@@ -485,7 +485,7 @@ Use the `codeHeader` snippet when you want to keep Streamdown's built-in code bl
 
 ### Custom Table Controls
 
-Use the `tableControls` snippet when you want to customize the table action area while keeping Streamdown's built-in copy/download behavior available.
+Use the `tableControls` snippet when you want to customize the table action area while keeping Streamdown's built-in export logic available.
 
 ```svelte
 <script>
@@ -502,18 +502,26 @@ Use the `tableControls` snippet when you want to customize the table action area
 </script>
 
 <Streamdown {content}>
-	{#snippet tableControls({ buttons })}
-		<div class="flex items-center justify-end gap-2 p-1">
-			<button type="button" class="rounded px-2 py-1 hover:bg-muted" onclick={inspectTable}>
-				Inspect
-			</button>
-			{@render buttons()}
-		</div>
+	{#snippet tableControls({ methods, isCopied })}
+		<button
+			type="button"
+			class="rounded px-2 py-1 hover:bg-muted"
+			onclick={() => methods.copy('Markdown')}
+		>
+			{isCopied ? 'Copied' : 'Copy Markdown'}
+		</button>
+		<button
+			type="button"
+			class="rounded px-2 py-1 hover:bg-muted"
+			onclick={() => methods.download('CSV')}
+		>
+			Download CSV
+		</button>
 	{/snippet}
 </Streamdown>
 ```
 
-`buttons()` renders Streamdown's default table actions, so you can extend the controls without reimplementing markdown/html/csv copy and download behavior.
+`tableControls` renders inside Streamdown's existing top-right actions area. The snippet receives `methods.copy(format)`, `methods.download(format)`, and `methods.getContent(format)` so custom UI can call the built-in markdown/html/csv export logic directly. If you still want the stock controls, `buttons()` is also available.
 
 ### Security Configuration
 
