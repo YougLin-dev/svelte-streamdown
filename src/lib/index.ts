@@ -2,7 +2,8 @@ export { default as Streamdown } from './Streamdown.svelte';
 export {
 	useStreamdown,
 	type StreamdownProps,
-	type CodeHeaderSnippetProps
+	type CodeHeaderSnippetProps,
+	type TableControlsSnippetProps
 } from './context.svelte.js';
 export { theme, shadcnTheme, mergeTheme, type Theme } from './theme.js';
 export { type Extension, type StreamdownToken, lex, parseBlocks } from './marked/index.js';

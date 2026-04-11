@@ -124,9 +124,7 @@
 	</Slot>
 {:else if token.type === 'table'}
 	<Slot props={{ token, children }} render={streamdown.snippets.table}>
-		{#if streamdown.controls.table}
-			<TableDownload {id} {token} />
-		{/if}
+		<TableDownload {id} {token} />
 		<div
 			data-streamdown-table={id}
 			{style}

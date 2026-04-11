@@ -117,6 +117,12 @@ export type CodeHeaderSnippetProps = {
 	buttons: Snippet;
 };
 
+export type TableControlsSnippetProps = {
+	token: TableToken;
+	controls: boolean;
+	buttons: Snippet;
+};
+
 type TokenSnippet = {
 	heading: Tokens.Heading;
 	paragraph: Tokens.Paragraph;
@@ -180,6 +186,7 @@ export type Snippets<Source extends Record<string, any> = Record<string, any>> =
 	>;
 } & {
 	codeHeader?: Snippet<[CodeHeaderSnippetProps]>;
+	tableControls?: Snippet<[TableControlsSnippetProps]>;
 };
 
 export type StreamdownProps<Source extends Record<string, any> = Record<string, any>> = {

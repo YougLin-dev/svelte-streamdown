@@ -483,6 +483,38 @@ Use the `codeHeader` snippet when you want to keep Streamdown's built-in code bl
 
 `buttons()` renders Streamdown's default code actions, so you can insert your own controls without rebuilding copy/download behavior from scratch.
 
+### Custom Table Controls
+
+Use the `tableControls` snippet when you want to customize the table action area while keeping Streamdown's built-in copy/download behavior available.
+
+```svelte
+<script>
+	import { Streamdown } from 'svelte-streamdown';
+
+	let content = `| Name | Score |
+| ---- | ----- |
+| Ada  | 42    |
+| Lin  | 64    |`;
+
+	function inspectTable() {
+		// Your custom action here
+	}
+</script>
+
+<Streamdown {content}>
+	{#snippet tableControls({ buttons })}
+		<div class="flex items-center justify-end gap-2 p-1">
+			<button type="button" class="rounded px-2 py-1 hover:bg-muted" onclick={inspectTable}>
+				Inspect
+			</button>
+			{@render buttons()}
+		</div>
+	{/snippet}
+</Streamdown>
+```
+
+`buttons()` renders Streamdown's default table actions, so you can extend the controls without reimplementing markdown/html/csv copy and download behavior.
+
 ### Security Configuration
 
 ```svelte
@@ -581,7 +613,7 @@ When a heavy component is not provided:
 
 **Code**: `code`, `codeHeader`, `codeSpan`
 
-**Tables**: `table`, `thead`, `tbody`, `tr`, `th`, `td`, `tfoot`
+**Tables**: `table`, `tableControls`, `thead`, `tbody`, `tr`, `th`, `td`, `tfoot`
 
 **Special Content**: `blockquote`, `hr`, `alert`, `mermaid`, `math`, `footnoteRef`, `inlineCitation`
 

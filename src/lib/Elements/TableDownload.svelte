@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Slot from './Slot.svelte';
 	import { useStreamdown } from '$lib/context.svelte.js';
 	import { scale } from 'svelte/transition';
 	import { checkIcon, copyIcon, downloadIcon } from './icons.js';
@@ -38,7 +39,11 @@
 		}
 	});
 
-	let copyValue = $state(token.raw);
+	let copyValue = $state('');
+
+	$effect(() => {
+		copyValue = token.raw;
+	});
 
 	const copy = useCopy({
 		get content() {
@@ -148,66 +153,81 @@
 	};
 </script>
 
-{#if popover.isOpen}
-	<dialog
-		id={'table-download-popover'}
-		aria-modal="false"
-		transition:scale|global={{ start: 0.95, duration: 100 }}
-		{@attach clickOutside.attachment}
-		{@attach popover.popoverAttachment}
-		open
-		style:width="fit-content !important"
-		style:min-width="fit-content !important"
-		class={streamdown.theme.components.popover}
-	>
-		{#each ['Markdown', 'HTML', 'CSV'] as type}
-			<button
-				style="width: 100%; text-align: left; justify-content: flex-start; padding: 1rem 1rem; margin: 0.2rem 0;"
-				onclick={() => copyOrDownload(type as 'Markdown' | 'HTML' | 'CSV')}
-				class={streamdown.theme.components.button}
+{#snippet DefaultButtons()}
+	{#if streamdown.controls.table}
+		{#if popover.isOpen}
+			<dialog
+				id={'table-download-popover'}
+				aria-modal="false"
+				transition:scale|global={{ start: 0.95, duration: 100 }}
+				{@attach clickOutside.attachment}
+				{@attach popover.popoverAttachment}
+				open
+				style:width="fit-content !important"
+				style:min-width="fit-content !important"
+				class={streamdown.theme.components.popover}
 			>
-				{type}
-			</button>
-		{/each}
-	</dialog>
-{/if}
+				{#each ['Markdown', 'HTML', 'CSV'] as type}
+					<button
+						style="width: 100%; text-align: left; justify-content: flex-start; padding: 1rem 1rem; margin: 0.2rem 0;"
+						onclick={() => copyOrDownload(type as 'Markdown' | 'HTML' | 'CSV')}
+						class={streamdown.theme.components.button}
+					>
+						{type}
+					</button>
+				{/each}
+			</dialog>
+		{/if}
 
-<div
-	data-streamdown-table-download
-	class=" right-0 ml-auto flex items-center justify-end gap-2 p-1"
->
-	{#each ['download', 'copy'] as mode (mode)}
-		<button
-			class={streamdown.theme.components.button}
-			onclick={async (e: MouseEvent) => {
-				if (modeState === mode && popover.isOpen) {
-					popover.isOpen = false;
-					return;
-				}
-				if (popover.isOpen && modeState !== mode) {
-					popover.isOpen = false;
-					const wait = new Promise((resolve) => {
-						setTimeout(resolve, 80);
-					});
-					await wait;
-				}
-				popover.reference = e.target as HTMLButtonElement;
-				popover.isOpen = true;
-				modeState = mode as 'download' | 'copy';
-			}}
-			{@attach clickOutside.attachment}
-			title={mode === 'download' ? 'Download table' : 'Copy table'}
+		<div
+			data-streamdown-table-download
+			class="right-0 ml-auto flex items-center justify-end gap-2 p-1"
 		>
-			{#if mode === 'download'}
-				{@render (streamdown.icons?.download || downloadIcon)()}
-			{:else if copy.isCopied}
-				{@render (streamdown.icons?.check || checkIcon)()}
-			{:else}
-				{@render (streamdown.icons?.copy || copyIcon)()}
-			{/if}
-		</button>
-	{/each}
-</div>
+			{#each ['download', 'copy'] as mode (mode)}
+				<button
+					class={streamdown.theme.components.button}
+					onclick={async (e: MouseEvent) => {
+						if (modeState === mode && popover.isOpen) {
+							popover.isOpen = false;
+							return;
+						}
+						if (popover.isOpen && modeState !== mode) {
+							popover.isOpen = false;
+							const wait = new Promise((resolve) => {
+								setTimeout(resolve, 80);
+							});
+							await wait;
+						}
+						popover.reference = e.target as HTMLButtonElement;
+						popover.isOpen = true;
+						modeState = mode as 'download' | 'copy';
+					}}
+					{@attach clickOutside.attachment}
+					title={mode === 'download' ? 'Download table' : 'Copy table'}
+				>
+					{#if mode === 'download'}
+						{@render (streamdown.icons?.download || downloadIcon)()}
+					{:else if copy.isCopied}
+						{@render (streamdown.icons?.check || checkIcon)()}
+					{:else}
+						{@render (streamdown.icons?.copy || copyIcon)()}
+					{/if}
+				</button>
+			{/each}
+		</div>
+	{/if}
+{/snippet}
+
+<Slot
+	props={{
+		token,
+		controls: streamdown.controls.table,
+		buttons: DefaultButtons
+	}}
+	render={streamdown.snippets.tableControls}
+>
+	{@render DefaultButtons()}
+</Slot>
 
 <style>
 	:global([data-streamdown-table-download] + div) {
