@@ -254,8 +254,10 @@ describe('tokenization', () => {
 		expect(paragraphToken).toBeDefined();
 		const paragraphTokens = paragraphToken.tokens || [];
 		const subTokens = paragraphTokens.filter((t: { type: string }) => t.type === 'sub');
+		const delTokens = paragraphTokens.filter((t: { type: string }) => t.type === 'del');
 
 		expect(subTokens.length).toBe(0);
+		expect(delTokens.length).toBe(0);
 	});
 
 	test('should not parse approximate numeric values as subscript', () => {
@@ -265,8 +267,10 @@ describe('tokenization', () => {
 		expect(paragraphToken).toBeDefined();
 		const paragraphTokens = paragraphToken.tokens || [];
 		const subTokens = paragraphTokens.filter((t: { type: string }) => t.type === 'sub');
+		const delTokens = paragraphTokens.filter((t: { type: string }) => t.type === 'del');
 
 		expect(subTokens.length).toBe(0);
+		expect(delTokens.length).toBe(0);
 	});
 
 	test('should use the visible trailing character when the previous token is formatted text', () => {

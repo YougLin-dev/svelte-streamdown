@@ -28,7 +28,13 @@ export const markedSub: Extension = {
 					content: text
 				})
 			) {
-				return;
+				// Prevent Marked's built-in single-tilde del parser from consuming rejected
+				// subscript candidates such as numeric ranges like `20~30`.
+				return {
+					type: 'text',
+					raw: '~',
+					text: '~'
+				};
 			}
 
 			return {

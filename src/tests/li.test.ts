@@ -250,6 +250,26 @@ describe('tokenization', () => {
 		expect(supTokens[0].text).toBe('2');
 	});
 
+	test('should keep numeric ranges literal in list items', () => {
+		const tokens = lex('- FarmHash64 一次哈希大约需要 20~30 步运算 → 20~30 次 kernel launch');
+		const listToken = getFirstTokenByType(tokens, 'list');
+
+		expect(listToken).toBeDefined();
+		const listItem = listToken.tokens[0];
+		const textToken = listItem.tokens.find((t: any) => t.type === 'text');
+		expect(textToken).toBeDefined();
+
+		const textTokens = textToken.tokens || [];
+		const subTokens = textTokens.filter((t: { type: string }) => t.type === 'sub');
+		const delTokens = textTokens.filter((t: { type: string }) => t.type === 'del');
+
+		expect(subTokens.length).toBe(0);
+		expect(delTokens.length).toBe(0);
+		expect(textToken.text).toBe(
+			'FarmHash64 一次哈希大约需要 20~30 步运算 → 20~30 次 kernel launch'
+		);
+	});
+
 	test('should handle empty list item (edge case)', () => {
 		// Try different variations to see what works
 		const input1 = '- \n- Item 2';
