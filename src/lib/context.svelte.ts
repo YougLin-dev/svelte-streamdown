@@ -212,6 +212,8 @@ export type StreamdownProps<Source extends Record<string, any> = Record<string, 
 	content: string;
 	class?: string;
 	parseIncompleteMarkdown?: boolean;
+	subscript?: boolean;
+	superscript?: boolean;
 	// Security props
 	defaultOrigin?: string;
 	allowedLinkPrefixes?: string[];

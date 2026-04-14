@@ -1,4 +1,6 @@
 // Simplified interface that merges Plugin and PatternRule
+import { canInterpretSubSup } from './subsup-intent.js';
+
 export interface Plugin {
 	name: string;
 	pattern?: RegExp;
@@ -6,6 +8,11 @@ export interface Plugin {
 	skipInBlockTypes?: string[]; // block types where this plugin should be skipped
 	preprocess?: (payload: HookPayload) => string | { text: string; state: Partial<ParseState> };
 	postprocess?: (payload: HookPayload) => string;
+}
+
+export interface ParseIncompleteMarkdownOptions {
+	subscript?: boolean;
+	superscript?: boolean;
 }
 
 interface HookPayload {
@@ -31,6 +38,18 @@ interface ParseState {
 	mdxLineStates?: Array<{ inMdx: boolean; incompletePositions: number[] }>;
 	_lines?: string[]; // cached split result, avoids redundant split('\n')
 }
+
+const normalizeParseIncompleteMarkdownOptions = (
+	options?: ParseIncompleteMarkdownOptions
+): Required<ParseIncompleteMarkdownOptions> => ({
+	subscript: options?.subscript ?? true,
+	superscript: options?.superscript ?? true
+});
+
+const getParseIncompleteMarkdownOptionsKey = (options?: ParseIncompleteMarkdownOptions): string => {
+	const normalized = normalizeParseIncompleteMarkdownOptions(options);
+	return `${normalized.subscript ? '1' : '0'}${normalized.superscript ? '1' : '0'}`;
+};
 
 export class IncompleteMarkdownParser {
 	private plugins: Plugin[] = [];
@@ -437,8 +456,9 @@ export class IncompleteMarkdownParser {
 	}
 
 	// Create default plugins that replicate the original handler functions
-	static createDefaultPlugins(): Plugin[] {
-		return [
+	static createDefaultPlugins(options?: ParseIncompleteMarkdownOptions): Plugin[] {
+		const normalizedOptions = normalizeParseIncompleteMarkdownOptions(options);
+		const plugins: Array<Plugin | null> = [
 			// Block-level plugin that manages blocking contexts
 			{
 				name: 'contextManager',
@@ -771,37 +791,50 @@ export class IncompleteMarkdownParser {
 					return line;
 				}
 			},
-			{
-				name: 'subscript',
-				pattern: /~/,
-				skipInBlockTypes: ['code', 'math'],
-				handler: ({ line }) => {
-					// Inline countSingleTildes logic
-					let singleTildes = 0;
-					for (let i = 0; i < line.length; i++) {
-						if (line[i] === '~') {
-							const prevChar = i > 0 ? line[i - 1] : '';
-							const nextChar = i < line.length - 1 ? line[i + 1] : '';
-							if (prevChar === '\\') continue;
-							if (prevChar !== '~' && nextChar !== '~') singleTildes++;
-						}
-					}
-
-					if (singleTildes % 2 === 1) {
-						const lastTildeIndex = line.lastIndexOf('~');
-						const mathRanges = computeMathRanges(line);
-						if (lastTildeIndex !== -1 && !isInMathRange(mathRanges, lastTildeIndex)) {
-							const endOfCellOrLine = findEndOfCellOrLineContaining(line, lastTildeIndex);
-							// Only complete if there's content after the tilde
-							const contentAfterTilde = line.substring(lastTildeIndex + 1, endOfCellOrLine);
-							if (contentAfterTilde.trim().length > 0) {
-								return line.substring(0, endOfCellOrLine) + '~' + line.substring(endOfCellOrLine);
+			normalizedOptions.subscript
+				? {
+						name: 'subscript',
+						pattern: /~/,
+						skipInBlockTypes: ['code', 'math'],
+						handler: ({ line }) => {
+							// Inline countSingleTildes logic
+							let singleTildes = 0;
+							for (let i = 0; i < line.length; i++) {
+								if (line[i] === '~') {
+									const prevChar = i > 0 ? line[i - 1] : '';
+									const nextChar = i < line.length - 1 ? line[i + 1] : '';
+									if (prevChar === '\\') continue;
+									if (prevChar !== '~' && nextChar !== '~') singleTildes++;
+								}
 							}
+
+							if (singleTildes % 2 === 1) {
+								const lastTildeIndex = line.lastIndexOf('~');
+								const mathRanges = computeMathRanges(line);
+								const previousCharacter =
+									lastTildeIndex > 0 ? (line[lastTildeIndex - 1] ?? '') : '';
+								if (lastTildeIndex !== -1 && !isInMathRange(mathRanges, lastTildeIndex)) {
+									const endOfCellOrLine = findEndOfCellOrLineContaining(line, lastTildeIndex);
+									// Only complete if there's content after the tilde
+									const contentAfterTilde = line.substring(lastTildeIndex + 1, endOfCellOrLine);
+									if (
+										canInterpretSubSup({
+											kind: 'subscript',
+											mode: 'autocomplete',
+											previousCharacter,
+											content: contentAfterTilde
+										})
+									) {
+										return (
+											line.substring(0, endOfCellOrLine) + '~' + line.substring(endOfCellOrLine)
+										);
+									}
+								}
+							}
+							return line;
 						}
 					}
-					return line;
-				}
-			},
+				: null,
 			{
 				name: 'footnoteRef',
 				pattern: /\[\^[^\]\s,]*/,
@@ -814,40 +847,53 @@ export class IncompleteMarkdownParser {
 					return line;
 				}
 			},
-			{
-				name: 'superscript',
-				pattern: /\^/,
-				skipInBlockTypes: ['code', 'math'],
-				handler: ({ line }) => {
-					// Inline countSingleCarets logic
-					let singleCarets = 0;
-					for (let i = 0; i < line.length; i++) {
-						if (line[i] === '^') {
-							const prevChar = i > 0 ? line[i - 1] : '';
-							if (prevChar === '\\') continue;
-							if (!isWithinFootnoteRef(line, i)) singleCarets++;
-						}
-					}
-
-					if (singleCarets % 2 === 1) {
-						const lastCaretIndex = line.lastIndexOf('^');
-						const mathRanges = computeMathRanges(line);
-						if (
-							lastCaretIndex !== -1 &&
-							!isInMathRange(mathRanges, lastCaretIndex) &&
-							!isWithinFootnoteRef(line, lastCaretIndex)
-						) {
-							const endOfCellOrLine = findEndOfCellOrLineContaining(line, lastCaretIndex);
-							// Only complete if there's content after the caret
-							const contentAfterCaret = line.substring(lastCaretIndex + 1, endOfCellOrLine);
-							if (contentAfterCaret.trim().length > 0) {
-								return line.substring(0, endOfCellOrLine) + '^' + line.substring(endOfCellOrLine);
+			normalizedOptions.superscript
+				? {
+						name: 'superscript',
+						pattern: /\^/,
+						skipInBlockTypes: ['code', 'math'],
+						handler: ({ line }) => {
+							// Inline countSingleCarets logic
+							let singleCarets = 0;
+							for (let i = 0; i < line.length; i++) {
+								if (line[i] === '^') {
+									const prevChar = i > 0 ? line[i - 1] : '';
+									if (prevChar === '\\') continue;
+									if (!isWithinFootnoteRef(line, i)) singleCarets++;
+								}
 							}
+
+							if (singleCarets % 2 === 1) {
+								const lastCaretIndex = line.lastIndexOf('^');
+								const mathRanges = computeMathRanges(line);
+								const previousCharacter =
+									lastCaretIndex > 0 ? (line[lastCaretIndex - 1] ?? '') : '';
+								if (
+									lastCaretIndex !== -1 &&
+									!isInMathRange(mathRanges, lastCaretIndex) &&
+									!isWithinFootnoteRef(line, lastCaretIndex)
+								) {
+									const endOfCellOrLine = findEndOfCellOrLineContaining(line, lastCaretIndex);
+									// Only complete if there's content after the caret
+									const contentAfterCaret = line.substring(lastCaretIndex + 1, endOfCellOrLine);
+									if (
+										canInterpretSubSup({
+											kind: 'superscript',
+											mode: 'autocomplete',
+											previousCharacter,
+											content: contentAfterCaret
+										})
+									) {
+										return (
+											line.substring(0, endOfCellOrLine) + '^' + line.substring(endOfCellOrLine)
+										);
+									}
+								}
+							}
+							return line;
 						}
 					}
-					return line;
-				}
-			},
+				: null,
 			{
 				name: 'inlineMath',
 				pattern: /\$/,
@@ -1217,18 +1263,36 @@ export class IncompleteMarkdownParser {
 				}
 			}
 		];
+
+		return plugins.filter((plugin): plugin is Plugin => plugin !== null);
 	}
 }
 
 // Legacy function for backward compatibility
-const defaultPlugins = IncompleteMarkdownParser.createDefaultPlugins();
-const defaultParser = new IncompleteMarkdownParser(defaultPlugins);
+const parserCache = new Map<string, IncompleteMarkdownParser>();
 
-export const parseIncompleteMarkdown = (text: string): string => {
+const getDefaultParser = (options?: ParseIncompleteMarkdownOptions): IncompleteMarkdownParser => {
+	const key = getParseIncompleteMarkdownOptionsKey(options);
+	const existingParser = parserCache.get(key);
+	if (existingParser) {
+		return existingParser;
+	}
+
+	const parser = new IncompleteMarkdownParser(
+		IncompleteMarkdownParser.createDefaultPlugins(options)
+	);
+	parserCache.set(key, parser);
+	return parser;
+};
+
+export const parseIncompleteMarkdown = (
+	text: string,
+	options?: ParseIncompleteMarkdownOptions
+): string => {
 	if (!text || typeof text !== 'string') {
 		return text;
 	}
-	return defaultParser.parse(text);
+	return getDefaultParser(options).parse(text);
 };
 
 // Utility functions

@@ -10,7 +10,9 @@
 		shikiTheme,
 		shikiLanguages,
 		shikiThemes,
-		parseIncompleteMarkdown,
+		parseIncompleteMarkdown = true,
+		subscript = true,
+		superscript = true,
 		defaultOrigin,
 		allowedLinkPrefixes = ['*'],
 		allowedImagePrefixes = ['*'],
@@ -60,6 +62,12 @@
 		},
 		get parseIncompleteMarkdown() {
 			return parseIncompleteMarkdown;
+		},
+		get subscript() {
+			return subscript;
+		},
+		get superscript() {
+			return superscript;
 		},
 		get defaultOrigin() {
 			return defaultOrigin;

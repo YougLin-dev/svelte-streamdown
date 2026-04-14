@@ -230,6 +230,30 @@ describe('tokenization', () => {
 		expect(supTokens.length).toBe(0);
 	});
 
+	test('should not parse numeric power notation without a closing caret as superscript', () => {
+		const tokens = lex('2^10');
+		const paragraphToken = getFirstTokenByType(tokens, 'paragraph');
+
+		expect(paragraphToken).toBeDefined();
+		const paragraphTokens = paragraphToken.tokens || [];
+		const supTokens = paragraphTokens.filter((t: { type: string }) => t.type === 'sup');
+
+		expect(supTokens.length).toBe(0);
+	});
+
+	test('should preserve explicit superscript after formatted numeric text', () => {
+		const tokens = lex('**10**^23^ and **mc**^2^.');
+		const paragraphToken = getFirstTokenByType(tokens, 'paragraph');
+
+		expect(paragraphToken).toBeDefined();
+		const paragraphTokens = paragraphToken.tokens || [];
+		const supTokens = paragraphTokens.filter((t: { type: string }) => t.type === 'sup');
+
+		expect(supTokens.length).toBe(2);
+		expect(supTokens[0].text).toBe('23');
+		expect(supTokens[1].text).toBe('2');
+	});
+
 	test('should handle empty superscript (edge case)', () => {
 		const tokens = lex('Empty superscript: ^^.');
 		const paragraphToken = getFirstTokenByType(tokens, 'paragraph');
@@ -327,5 +351,13 @@ describe('incomplete markdown', () => {
 
 		// Should not complete if no content after caret
 		expect(result).toBe('Empty superscript: ^');
+	});
+
+	test('should not complete numeric power notation when the caret is literal', () => {
+		expect(parseIncompleteMarkdown('2^10')).toBe('2^10');
+	});
+
+	test('should not complete numeric power notation after formatted numeric text', () => {
+		expect(parseIncompleteMarkdown('**2**^10')).toBe('**2**^10');
 	});
 });

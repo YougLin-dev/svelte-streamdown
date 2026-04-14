@@ -1,4 +1,8 @@
 import type { Extension } from './index.js';
+import {
+	canInterpretSubSup,
+	getVisibleTrailingCharacterFromTokens
+} from '../utils/subsup-intent.js';
 
 const subRule = /^~([^~\s](?:[^~]*[^~\s])?)~/; // ~text~
 const supRule = /^\^([^\^\s](?:[^\^]*[^\^\s])?)\^/; // ^text^
@@ -10,14 +14,28 @@ export const markedSub: Extension = {
 		const i = src.indexOf('~');
 		return i === -1 ? undefined : i;
 	},
-	tokenizer(this, src) {
+	tokenizer(this, src, tokens) {
 		const match = src.match(subRule);
 		if (match) {
+			const text = match[1];
+			if (
+				!canInterpretSubSup({
+					kind: 'subscript',
+					mode: 'explicit',
+					previousCharacter: getVisibleTrailingCharacterFromTokens(
+						Array.isArray(tokens) ? tokens : undefined
+					),
+					content: text
+				})
+			) {
+				return;
+			}
+
 			return {
 				type: 'sub',
 				raw: match[0],
-				text: match[1],
-				tokens: this.lexer.inlineTokens(match[1])
+				text,
+				tokens: this.lexer.inlineTokens(text)
 			} satisfies SubToken;
 		}
 	}
@@ -30,14 +48,28 @@ export const markedSup: Extension = {
 		const i = src.indexOf('^');
 		return i === -1 ? undefined : i;
 	},
-	tokenizer(this, src) {
+	tokenizer(this, src, tokens) {
 		const match = src.match(supRule);
 		if (match) {
+			const text = match[1];
+			if (
+				!canInterpretSubSup({
+					kind: 'superscript',
+					mode: 'explicit',
+					previousCharacter: getVisibleTrailingCharacterFromTokens(
+						Array.isArray(tokens) ? tokens : undefined
+					),
+					content: text
+				})
+			) {
+				return;
+			}
+
 			return {
 				type: 'sup',
 				raw: match[0],
-				text: match[1],
-				tokens: this.lexer.inlineTokens(match[1])
+				text,
+				tokens: this.lexer.inlineTokens(text)
 			} satisfies SupToken;
 		}
 	}

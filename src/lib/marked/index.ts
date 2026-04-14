@@ -56,6 +56,11 @@ export type Extension = {
 	applyInBlockParsing?: boolean;
 };
 
+export type InlineSyntaxOptions = {
+	subscript?: boolean;
+	superscript?: boolean;
+};
+
 export type StreamdownToken =
 	| Exclude<MarkedToken, Tokens.List | Tokens.ListItem | Tokens.Table>
 	| ListToken
@@ -131,6 +136,26 @@ const parseExtensions = (...extensions: Extension[]) => {
 // Pre-compute footnote extensions (safeGetContext runs lazily inside tokenizers)
 const _defaultFootnoteExtensions = markedFootnote();
 
+const normalizeInlineSyntaxOptions = (options?: InlineSyntaxOptions) => ({
+	subscript: options?.subscript ?? true,
+	superscript: options?.superscript ?? true
+});
+
+const getInlineExtensions = (options?: InlineSyntaxOptions): Extension[] => {
+	const normalized = normalizeInlineSyntaxOptions(options);
+	const extensions: Extension[] = [];
+
+	if (normalized.subscript) {
+		extensions.push(markedSub);
+	}
+
+	if (normalized.superscript) {
+		extensions.push(markedSup);
+	}
+
+	return extensions;
+};
+
 // Pre-compute default Lexer options for lex() and parseBlocks()
 const _defaultLexOptions = parseExtensions(
 	markedHr,
@@ -138,8 +163,7 @@ const _defaultLexOptions = parseExtensions(
 	..._defaultFootnoteExtensions,
 	markedAlert,
 	...markedMath,
-	markedSub,
-	markedSup,
+	...getInlineExtensions(),
 	markedList,
 	markedBr,
 	markedDl,
@@ -158,9 +182,17 @@ const _defaultBlockOptions = parseExtensions(
 	markedMdx
 );
 
-export const lex = (markdown: string, extensions: Extension[] = []): StreamdownToken[] => {
+export const lex = (
+	markdown: string,
+	extensions: Extension[] = [],
+	inlineSyntaxOptions?: InlineSyntaxOptions
+): StreamdownToken[] => {
+	const inlineExtensions = getInlineExtensions(inlineSyntaxOptions);
+	const normalizedInlineSyntax = normalizeInlineSyntaxOptions(inlineSyntaxOptions);
 	const options =
-		extensions.length === 0
+		extensions.length === 0 &&
+		normalizedInlineSyntax.subscript &&
+		normalizedInlineSyntax.superscript
 			? _defaultLexOptions
 			: parseExtensions(
 					markedHr,
@@ -168,8 +200,7 @@ export const lex = (markdown: string, extensions: Extension[] = []): StreamdownT
 					..._defaultFootnoteExtensions,
 					markedAlert,
 					...markedMath,
-					markedSub,
-					markedSup,
+					...inlineExtensions,
 					markedList,
 					markedBr,
 					markedDl,

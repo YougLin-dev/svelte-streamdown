@@ -15,8 +15,22 @@
 	} = $props();
 
 	const streamdown = useStreamdown();
+	const normalizedBlock = $derived.by(() => {
+		const trimmedBlock = block.trim();
+		if (isStatic || streamdown.parseIncompleteMarkdown === false) {
+			return trimmedBlock;
+		}
+
+		return parseIncompleteMarkdown(trimmedBlock, {
+			subscript: streamdown.subscript,
+			superscript: streamdown.superscript
+		});
+	});
 	const tokens = $derived(
-		lex(isStatic ? block : parseIncompleteMarkdown(block.trim()), streamdown.extensions)
+		lex(normalizedBlock, streamdown.extensions, {
+			subscript: streamdown.subscript,
+			superscript: streamdown.superscript
+		})
 	);
 	const insidePopover = getContext('POPOVER');
 </script>

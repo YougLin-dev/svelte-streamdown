@@ -247,6 +247,40 @@ describe('tokenization', () => {
 		expect(subTokens.length).toBe(0);
 	});
 
+	test('should not parse numeric ranges as subscript', () => {
+		const tokens = lex('FarmHash64 一次哈希大约需要 20~30 步运算 → 20~30 次 kernel launch');
+		const paragraphToken = getFirstTokenByType(tokens, 'paragraph');
+
+		expect(paragraphToken).toBeDefined();
+		const paragraphTokens = paragraphToken.tokens || [];
+		const subTokens = paragraphTokens.filter((t: { type: string }) => t.type === 'sub');
+
+		expect(subTokens.length).toBe(0);
+	});
+
+	test('should not parse approximate numeric values as subscript', () => {
+		const tokens = lex('GPU kernel 启动开销（约 5~15μs/次）远超单次位运算本身的耗时');
+		const paragraphToken = getFirstTokenByType(tokens, 'paragraph');
+
+		expect(paragraphToken).toBeDefined();
+		const paragraphTokens = paragraphToken.tokens || [];
+		const subTokens = paragraphTokens.filter((t: { type: string }) => t.type === 'sub');
+
+		expect(subTokens.length).toBe(0);
+	});
+
+	test('should use the visible trailing character when the previous token is formatted text', () => {
+		const tokens = lex('**20**~30 and **H**~2~O');
+		const paragraphToken = getFirstTokenByType(tokens, 'paragraph');
+
+		expect(paragraphToken).toBeDefined();
+		const paragraphTokens = paragraphToken.tokens || [];
+		const subTokens = paragraphTokens.filter((t: { type: string }) => t.type === 'sub');
+
+		expect(subTokens.length).toBe(1);
+		expect(subTokens[0].text).toBe('2');
+	});
+
 	test('should handle empty subscript (edge case)', () => {
 		const tokens = lex('Empty subscript: ~~.');
 		const paragraphToken = getFirstTokenByType(tokens, 'paragraph');
@@ -373,5 +407,19 @@ describe('incomplete markdown', () => {
 
 		// Should not complete if no content after tilde
 		expect(result).toBe('Empty subscript: ~');
+	});
+
+	test('should not complete approximate numeric values that start with a tilde', () => {
+		expect(parseIncompleteMarkdown('~0.1–0.3ms')).toBe('~0.1–0.3ms');
+		expect(parseIncompleteMarkdown('**~10ns**')).toBe('**~10ns**');
+	});
+
+	test('should not complete numeric ranges that use a literal tilde', () => {
+		expect(parseIncompleteMarkdown('20~30')).toBe('20~30');
+		expect(parseIncompleteMarkdown('约 5~15μs/次')).toBe('约 5~15μs/次');
+	});
+
+	test('should not complete numeric ranges after formatted numeric text', () => {
+		expect(parseIncompleteMarkdown('**20**~30')).toBe('**20**~30');
 	});
 });
